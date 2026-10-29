@@ -115,6 +115,37 @@
                         android:layout_height="wrap_content"
                         android:text="@string/settings_graphics" />
 
+                    <!-- Shown only when the package offers them (manifest "options"). -->
+                    <TextView
+                        android:id="@+id/preset_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/setting_preset"
+                        android:textAppearance="?attr/textAppearanceTitleSmall"
+                        android:visibility="gone" />
+
+                    <Spinner
+                        android:id="@+id/preset"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/frame_rate_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/setting_frame_rate"
+                        android:textAppearance="?attr/textAppearanceTitleSmall"
+                        android:visibility="gone" />
+
+                    <Spinner
+                        android:id="@+id/frame_rate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

@@ -80,11 +80,11 @@ final class InstanceActions {
     }
 
     /**
-     * Saves from a .zip: the folders of userdata/content/454108C0/00000001 (from DAORecomp on a
+     * Saves from a .zip: the folders of userdata/content/<title ID>/00000001 (from DAORecomp on a
      * PC, or another instance), with or without that path in the zip.
      */
     static void installSaves(Activity a, Instance instance, Uri uri) {
-        File saves = new File(instance.userdata(), "content/454108C0/00000001");
+        File saves = savesDir(instance);
         int files = 0;
         try (InputStream in = a.getContentResolver().openInputStream(uri); ZipInputStream zip = new ZipInputStream(in)) {
             ZipEntry e;
@@ -109,8 +109,8 @@ final class InstanceActions {
     /**
      * Xenia's shader and pipeline storage (userdata/shader_cache/shaders/shareable: the guest
      * shaders and the pipeline descriptions, not driver-specific) from another instance of the
-     * same game, so a new one starts warm: no stutter and no skipped one-time draws (the HUD
-     * portraits) while the first sessions fill its own. Returns the files copied.
+     * same game (same title ID), so a new one starts warm: no stutter and no skipped one-time
+     * draws (the HUD portraits) while the first sessions fill its own. Returns the files copied.
      */
     static int copyShaderCache(Instance from, Instance to) throws IOException {
         File src = new File(from.userdata(), "shader_cache/shaders/shareable");
@@ -132,12 +132,12 @@ final class InstanceActions {
         return n;
     }
 
-    /** The other instance with the biggest shader cache, or null. */
+    /** The other instance of the same game with the biggest shader cache, or null. */
     static Instance warmestOther(List<Instance> all, Instance self) {
         Instance best = null;
         long bestSize = 0;
         for (Instance i : all) {
-            if (i.id.equals(self.id)) continue;
+            if (i.id.equals(self.id) || !i.titleId().equals(self.titleId())) continue;
             long size = 0;
             File[] files = new File(i.userdata(), "shader_cache/shaders/shareable").listFiles();
             if (files != null) for (File f : files) size += f.length();
@@ -152,7 +152,7 @@ final class InstanceActions {
     /** Asks which game to take the shader cache from, then copies it. */
     static void importShaderCache(Activity a, Instance to, List<Instance> all) {
         List<Instance> others = new java.util.ArrayList<>();
-        for (Instance i : all) if (!i.id.equals(to.id)) others.add(i);
+        for (Instance i : all) if (!i.id.equals(to.id) && i.titleId().equals(to.titleId())) others.add(i);
         if (others.isEmpty()) {
             Toast.makeText(a, R.string.cache_no_other, Toast.LENGTH_LONG).show();
             return;
@@ -168,9 +168,43 @@ final class InstanceActions {
         });
     }
 
+    /**
+     * Puts the picked graphics preset in place before the game starts: presets/<id>.cfg copied
+     * to options.preset.target (a file under game/ the game reads at boot). The game's own
+     * settings ("") mean no such file: one the launcher wrote is removed, and a file the game
+     * itself shipped there is kept aside (.orig) while a preset is in use, then put back.
+     */
+    static void applyPreset(Instance instance) throws IOException {
+        org.json.JSONObject o = instance.option("preset");
+        if (o == null) return;
+        String path = o.optString("target");
+        if (!path.startsWith("game/") || path.contains("..")) return;
+        File target = new File(instance.root, path);
+        File orig = new File(target.getPath() + ".orig");
+        File preset = instance.preset.isEmpty() ? null : new File(instance.presetsDir(), instance.preset + ".cfg");
+        if (preset != null && preset.isFile()) {
+            if (!instance.presetWritten && target.isFile() && !orig.exists() && !target.renameTo(orig)) {
+                throw new IOException("can't keep " + target + " aside");
+            }
+            try (InputStream in = new FileInputStream(preset)) {
+                copy(in, target);
+            }
+            if (!instance.presetWritten) {
+                instance.presetWritten = true;
+                instance.save();
+            }
+        } else if (instance.presetWritten) {
+            //noinspection ResultOfMethodCallIgnored
+            target.delete();
+            if (orig.isFile() && !orig.renameTo(target)) throw new IOException("can't restore " + target);
+            instance.presetWritten = false;
+            instance.save();
+        }
+    }
+
     /** The instance's saves folder (the game's save content, user 1). */
     static File savesDir(Instance instance) {
-        return new File(instance.userdata(), "content/454108C0/00000001");
+        return new File(instance.userdata(), "content/" + instance.titleId() + "/00000001");
     }
 
     /** The saves as a .zip into the document the player picked (CreateDocument). */
@@ -179,7 +213,7 @@ final class InstanceActions {
         int files = 0;
         try (OutputStream out = a.getContentResolver().openOutputStream(uri);
              java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(out)) {
-            files = addTree(zip, saves, "content/454108C0/00000001/");
+            files = addTree(zip, saves, "content/" + instance.titleId() + "/00000001/");
         } catch (IOException e) {
             Toast.makeText(a, e.toString(), Toast.LENGTH_LONG).show();
             return;
@@ -188,7 +222,8 @@ final class InstanceActions {
     }
 
     static String savesFileName(Instance instance) {
-        return "DAO-saves-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.ROOT).format(new java.util.Date()) + ".zip";
+        String game = Instance.DAO_TITLE_ID.equals(instance.titleId()) ? "DAO" : instance.titleId();
+        return game + "-saves-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.ROOT).format(new java.util.Date()) + ".zip";
     }
 
     static int addTree(java.util.zip.ZipOutputStream zip, File dir, String prefix) throws IOException {

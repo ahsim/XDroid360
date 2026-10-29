@@ -286,11 +286,23 @@ public class GameActivity extends SDLActivity {
         try {
             XeniaConfig.set(config, "dao_texture_lod_bias", String.valueOf(current.textureLodBias));
             XeniaConfig.set(config, "dao_present_prerotate", current.prerotate ? "true" : "false");
+            org.json.JSONObject frameRate = current.option("frame_rate");
+            String[] key = frameRate != null ? frameRate.optString("config").split("\\.", 2) : new String[0];
+            if (key.length == 2 && current.frameRateToUse() > 0) {
+                XeniaConfig.set(config, key[0], key[1], String.valueOf(current.frameRateToUse()));
+            }
         } catch (java.io.IOException e) {
             Log.w(TAG, "config.toml: " + e);
         }
+        try {
+            InstanceActions.applyPreset(current);
+        } catch (java.io.IOException e) {
+            Log.w(TAG, "preset: " + e);
+        }
         Log.i(TAG, "Instance " + current.id + ": driver " + current.driver + ", sysmem " + current.sysmem
-                + ", texture LOD " + current.textureLodBias + ", prerotate " + current.prerotate);
+                + ", texture LOD " + current.textureLodBias + ", prerotate " + current.prerotate
+                + (current.option("frame_rate") != null ? ", frame rate " + current.frameRateToUse() : "")
+                + (current.option("preset") != null ? ", preset " + (current.preset.isEmpty() ? "game's own" : current.preset) : ""));
     }
 
     /**

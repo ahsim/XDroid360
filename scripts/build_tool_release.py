@@ -47,7 +47,7 @@ README = """DAODroid's PC tool
 2. Double-click "DAODroid Tool.cmd".
 3. Pick your Dragon Age: Origins Xbox 360 disc image (.iso) and a folder for the package.
 4. Wait (about an hour the first time: it downloads and sets up its tools).
-5. Copy the .daopkg file to your phone and add it in the DAODroid launcher (+).
+5. Copy the .x360pkg file to your phone and add it in the DAODroid launcher (+).
 
 If Windows says Smart App Control blocked XenonRecomp.exe: the tool can't run on this PC while
 Smart App Control is on (see Known issues on the project page).

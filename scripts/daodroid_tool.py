@@ -1,4 +1,4 @@
-"""DAODroid's PC tool: your own disc image in, a game package (.daopkg) for the launcher out.
+"""DAODroid's PC tool: your own disc image in, a game package (.x360pkg) for the launcher out.
 
     python scripts/daodroid_tool.py --iso "<the disc image>" --out "<folder for the package>"
         [--accept-msvc-license] [--jobs N] [--work <folder>]

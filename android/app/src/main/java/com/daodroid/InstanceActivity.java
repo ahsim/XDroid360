@@ -53,7 +53,7 @@ public class InstanceActivity extends AppCompatActivity {
 
         ImageView banner = findViewById(R.id.banner);
         new Thread(() -> {
-            Bitmap b = Banner.load(instance);
+            Bitmap b = Banner.load(this, instance);
             if (b != null) runOnUiThread(() -> banner.setImageBitmap(b));
         }).start();
 
@@ -71,6 +71,7 @@ public class InstanceActivity extends AppCompatActivity {
         bindSpinner(driver, R.array.drivers, indexOf(DRIVERS, instance.driver), i -> instance.driver = DRIVERS[i]);
         findViewById(R.id.driver_pick).setOnClickListener(v -> pickDriver.launch(new String[] { "*/*" }));
         bindSpinner(findViewById(R.id.sysmem), R.array.sysmem, indexOf(SYSMEM, instance.sysmem), i -> instance.sysmem = SYSMEM[i]);
+        bindOptions();
         android.widget.RadioGroup lod = findViewById(R.id.lod);
         int[] lodIds = { R.id.lod_full, R.id.lod_low, R.id.lod_ultra_low };
         lod.check(lodIds[Math.max(0, Math.min(2, instance.textureLodBias))]);
@@ -135,11 +136,64 @@ public class InstanceActivity extends AppCompatActivity {
         }
     }
 
+    /** The settings only some games have, offered by their package (manifest "options"). */
+    private void bindOptions() {
+        java.util.List<String> presets = instance.presets();
+        if (!presets.isEmpty()) {
+            java.util.List<String> ids = new java.util.ArrayList<>();
+            java.util.List<CharSequence> labels = new java.util.ArrayList<>();
+            ids.add("");
+            labels.add(getString(R.string.preset_default));
+            for (String id : presets) {
+                ids.add(id);
+                labels.add(presetLabel(id));
+            }
+            int at = Math.max(0, ids.indexOf(instance.preset));
+            showSpinner(R.id.preset_label, R.id.preset, labels, at, i -> instance.preset = ids.get(i));
+        }
+        org.json.JSONObject frameRate = instance.option("frame_rate");
+        org.json.JSONArray choices = frameRate != null ? frameRate.optJSONArray("choices") : null;
+        if (choices != null && choices.length() > 0) {
+            java.util.List<Integer> rates = new java.util.ArrayList<>();
+            java.util.List<CharSequence> labels = new java.util.ArrayList<>();
+            for (int i = 0; i < choices.length(); i++) {
+                rates.add(choices.optInt(i));
+                labels.add(getString(R.string.frame_rate_value, choices.optInt(i)));
+            }
+            int at = Math.max(0, rates.indexOf(instance.frameRateToUse()));
+            showSpinner(R.id.frame_rate_label, R.id.frame_rate, labels, at, i -> instance.frameRate = rates.get(i));
+        }
+    }
+
+    /** A preset's name in the player's language for the common ids, else the id itself. */
+    private CharSequence presetLabel(String id) {
+        switch (id) {
+            case "medium": return getString(R.string.preset_medium);
+            case "balanced": return getString(R.string.preset_balanced);
+            case "low": return getString(R.string.preset_low);
+            case "very_low": return getString(R.string.preset_very_low);
+            default: return id;
+        }
+    }
+
+    private void showSpinner(int labelId, int spinnerId, java.util.List<CharSequence> labels, int selected, OnPick onPick) {
+        findViewById(labelId).setVisibility(View.VISIBLE);
+        Spinner spinner = findViewById(spinnerId);
+        spinner.setVisibility(View.VISIBLE);
+        ArrayAdapter<CharSequence> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, labels);
+        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        listen(spinner, a, selected, onPick);
+    }
+
     private interface OnPick { void picked(int index); }
 
     private void bindSpinner(Spinner spinner, int array, int selected, OnPick onPick) {
         ArrayAdapter<CharSequence> a = ArrayAdapter.createFromResource(this, array, android.R.layout.simple_spinner_item);
         a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        listen(spinner, a, selected, onPick);
+    }
+
+    private void listen(Spinner spinner, ArrayAdapter<CharSequence> a, int selected, OnPick onPick) {
         spinner.setAdapter(a);
         spinner.setSelection(Math.max(0, selected), false);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {

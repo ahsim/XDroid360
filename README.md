@@ -18,12 +18,12 @@ your PC from your own disc: the Xbox 360 disc with title ID `454108C0` and media
    https://github.com/udarmolota/DAODroid`; it holds both the PC tool and the launcher's
    source), double-click **`DAODroid Tool.cmd`** in its folder, pick your disc image and wait.
    It checks the disc, extracts the game, translates its code and makes a game package, a
-   `.daopkg` file (about 7 GB, about an hour: it sets up its own tools on the way). You need
+   `.x360pkg` file (about 7 GB, about an hour: it sets up its own tools on the way). You need
    [Python 3.10+](https://www.python.org/downloads/). You make the package once; run the tool
    again only when a new DAODroid version brings fixes to the game itself.
 2. **On your phone**, install the DAODroid launcher APK from this repository's
    [Releases](https://github.com/udarmolota/DAODroid/releases).
-3. **Copy the `.daopkg`** to the phone (a cable, a cloud drive, a messenger).
+3. **Copy the `.x360pkg`** to the phone (a cable, a cloud drive, a messenger).
 4. In the launcher, tap **+**, pick the file, and once it's added, tap **Play**.
 
 The package is your own copy of the game: don't share it.

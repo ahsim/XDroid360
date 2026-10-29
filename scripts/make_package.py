@@ -1,8 +1,8 @@
-"""Makes a DAODroid game package (.daopkg, docs/PACKAGE_FORMAT.md) from the extracted game files
-and a built game library, or checks one.
+"""Makes a game package (.x360pkg, docs/PACKAGE_FORMAT.md) from the extracted game files and a
+built game library, or checks one (format 2, or an older format 1 .daopkg).
 
     make_package.py build --game <install/game> --library <libdaodroid.so> [--title-update <dir>] --out <dir>
-    make_package.py check <package.daopkg>
+    make_package.py check <package.x360pkg>
 
 The package holds the game's translated code and data: it is the player's own copy, never to be
 shared. This is the packaging step of the PC tool; for now the library comes from the app's dev
@@ -22,9 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "recomp"))
 from installer import deps  # noqa: E402  (recomp/installer/deps.py: the disc and title update pins)
 
-FORMAT = 1
-TOOL = "make_package.py 1"
+FORMAT = 2
+FORMATS = (1, 2)  # check reads these; format 1 is the same layout without "title" (.daopkg)
+TOOL = "make_package.py 2"
 LIBRARY_ENTRY = "lib/arm64-v8a/libdaodroid.so"
+TITLE = "Dragon Age: Origins"
 TITLE_ID = "454108C0"
 MEDIA_ID = "186A1115"
 
@@ -98,6 +100,7 @@ def build(args):
         "format": FORMAT,
         "abi": abi_version(),
         "title_id": TITLE_ID,
+        "title": TITLE,
         "media_id": MEDIA_ID,
         "xex_sha1": xex_sha1,
         "title_update": title_update,
@@ -114,8 +117,8 @@ def build(args):
 
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"DAO-{TITLE_ID}-{daodroid[:8]}.daopkg"
-    partial = out.with_suffix(".daopkg.partial")
+    out = out_dir / f"DAO-{TITLE_ID}-{daodroid[:8]}.x360pkg"
+    partial = out.with_suffix(".x360pkg.partial")
     print(f"Writing {out} ({len(files)} game files, {game_bytes / 2**30:.1f} GB)")
     with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as z:
         z.writestr("manifest.json", json.dumps(manifest, indent=2) + "\n")
@@ -134,6 +137,36 @@ def build(args):
     return out
 
 
+def option_problems(m, names):
+    """The optional "options" block (format 2): what the launcher offers per instance."""
+    options = m.get("options")
+    if options is None:
+        return []
+    if not isinstance(options, dict):
+        return ["options isn't an object"]
+    problems = []
+    frame_rate = options.get("frame_rate")
+    if frame_rate is not None:
+        choices = frame_rate.get("choices")
+        if not re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+", str(frame_rate.get("config", ""))):
+            problems.append("options.frame_rate.config isn't <section>.<key>")
+        if not choices or not all(isinstance(c, int) and c > 0 for c in choices):
+            problems.append("options.frame_rate.choices isn't a list of frame rates")
+        elif frame_rate.get("default", choices[0]) not in choices:
+            problems.append("options.frame_rate.default isn't one of its choices")
+    preset = options.get("preset")
+    if preset is not None:
+        target = str(preset.get("target", ""))
+        if not target.startswith("game/") or ".." in target:
+            problems.append("options.preset.target isn't a path under game/")
+        for choice in preset.get("choices") or []:
+            if not re.fullmatch(r"[a-z0-9_]+", str(choice)):
+                problems.append(f"a bad preset id {choice!r}")
+            elif f"presets/{choice}.cfg" not in names:
+                problems.append(f"no presets/{choice}.cfg")
+    return problems
+
+
 def check(args):
     path = Path(args.package)
     with zipfile.ZipFile(path) as z:
@@ -142,12 +175,15 @@ def check(args):
             sys.exit("manifest.json isn't the first entry")
         m = json.loads(z.read("manifest.json"))
         problems = []
-        if m.get("format") != FORMAT:
-            problems.append(f"format {m.get('format')} (this tool knows {FORMAT})")
+        if m.get("format") not in FORMATS:
+            problems.append(f"format {m.get('format')} (this tool knows {', '.join(map(str, FORMATS))})")
         if m.get("abi") != abi_version():
             problems.append(f"abi {m.get('abi')}, this tree's is {abi_version()}")
-        if m.get("xex_sha1") != deps.GAME_XEX_SHA1:
-            problems.append("an unknown disc (xex_sha1)")
+        if not re.fullmatch(r"[0-9A-Fa-f]{8}", str(m.get("title_id", ""))):
+            problems.append(f"a bad title_id {m.get('title_id')!r}")
+        elif m["title_id"].upper() == TITLE_ID and m.get("xex_sha1") != deps.GAME_XEX_SHA1:
+            problems.append("an unknown disc of this game (xex_sha1)")
+        problems += option_problems(m, names)
         if LIBRARY_ENTRY not in names:
             problems.append(f"no {LIBRARY_ENTRY}")
         else:
@@ -165,7 +201,8 @@ def check(args):
         compressed = [i.filename for i in z.infolist() if i.compress_type != zipfile.ZIP_STORED]
         if compressed:
             problems.append(f"{len(compressed)} compressed entries (must be stored)")
-    print(json.dumps({k: m[k] for k in ("format", "abi", "title_id", "media_id", "title_update", "build")}, indent=2))
+    print(json.dumps({k: m.get(k) for k in ("format", "abi", "title_id", "title", "media_id", "title_update", "build")},
+                     indent=2))
     if problems:
         sys.exit("Not a valid package: " + "; ".join(problems))
     print(f"OK: {len(game)} game files, {m['game_bytes'] / 2**30:.1f} GB")

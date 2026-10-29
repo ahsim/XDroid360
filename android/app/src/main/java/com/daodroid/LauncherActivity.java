@@ -138,7 +138,7 @@ public class LauncherActivity extends AppCompatActivity {
         h.banner.setImageBitmap(b);
         if (b == null) {
             new Thread(() -> {
-                Bitmap made = Banner.load(i);
+                Bitmap made = Banner.load(this, i);
                 if (made != null) ui.post(() -> {
                     banners.put(i.id, made);
                     int at = instances.indexOf(i);

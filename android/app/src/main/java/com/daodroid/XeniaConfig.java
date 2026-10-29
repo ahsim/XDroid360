@@ -9,14 +9,19 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Sets an option in the [xenia] section of the game's config.toml (Xenia's GPU options by
- * their cvar names, which DAORecomp keeps verbatim across its own rewrites). A missing file is
- * created with only that section; the game fills in the rest at start.
+ * Sets an option in a section of the game's config.toml: [xenia] for Xenia's GPU options by
+ * their cvar names (which DAORecomp keeps verbatim across its own rewrites), or another section
+ * a package names (options.frame_rate.config, e.g. video.frame_rate). A missing file or section
+ * is created with only that option; the game fills in the rest at start.
  */
 final class XeniaConfig {
     private XeniaConfig() {}
 
     static void set(File config, String key, String value) throws IOException {
+        set(config, "xenia", key, value);
+    }
+
+    static void set(File config, String sectionName, String key, String value) throws IOException {
         List<String> lines = config.isFile()
                 ? new ArrayList<>(Arrays.asList(new String(Files.readAllBytes(config.toPath()), StandardCharsets.UTF_8).split("\n", -1)))
                 : new ArrayList<>();
@@ -29,12 +34,12 @@ final class XeniaConfig {
                     end = i;
                     break;
                 }
-                if (t.equals("[xenia]")) section = i;
+                if (t.equals("[" + sectionName + "]")) section = i;
             }
         }
         if (section < 0) {
             if (!lines.isEmpty() && !lines.get(lines.size() - 1).isEmpty()) lines.add("");
-            lines.add("[xenia]");
+            lines.add("[" + sectionName + "]");
             lines.add(line);
             lines.add("");
         } else {

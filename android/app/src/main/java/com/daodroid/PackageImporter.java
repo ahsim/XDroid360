@@ -19,16 +19,15 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Imports a game package (.daopkg, docs/PACKAGE_FORMAT.md) into a new instance: reads
+ * Imports a game package (.x360pkg, or an older .daopkg; docs/PACKAGE_FORMAT.md) into a new instance: reads
  * manifest.json (the first entry), checks it, then streams the entries into place. A package is
  * a stored ZIP, so this is a plain copy (ZipInputStream reads the local headers in order; the
  * entries are each under 4 GB, so no ZIP64 local headers).
  */
 final class PackageImporter {
-    static final int FORMAT = 1;
+    /** The newest format this launcher reads; format 1 (.daopkg) is the same layout without "title". */
+    static final int FORMAT = 2;
     static final String LIBRARY_ENTRY = "lib/arm64-v8a/libdaodroid.so";
-    /** default.xex of the supported disc (DAORecomp's installer/deps.py GAME_XEX_SHA1). */
-    static final String XEX_SHA1 = "532c0ec164f44bc8784cc0e8f6f67f72c1ed3751";
 
     interface Progress {
         void onProgress(long done, long total, String entry);
@@ -45,7 +44,7 @@ final class PackageImporter {
              ZipInputStream zip = new ZipInputStream(new BufferedInputStream(in, 1 << 16))) {
             ZipEntry first = zip.getNextEntry();
             if (first == null || !"manifest.json".equals(first.getName())) {
-                throw new Problem("This isn't a DAODroid game package (no manifest.json first).");
+                throw new Problem("This isn't a game package (no manifest.json first).");
             }
             String text = new String(readAll(zip), StandardCharsets.UTF_8);
             JSONObject m;
@@ -58,7 +57,7 @@ final class PackageImporter {
             if (format > FORMAT) {
                 throw new Problem("This package is newer than this launcher (format " + format + "): update DAODroid.");
             }
-            if (format != FORMAT) {
+            if (format < 1) {
                 throw new Problem("Unknown package format " + format + ".");
             }
             int abi = m.optInt("abi", -1);
@@ -67,8 +66,10 @@ final class PackageImporter {
                         ? "This package was built for a newer DAODroid (version " + abi + "): update the launcher."
                         : "This package was built for an older DAODroid (version " + abi + "): build it again with the current tools.");
             }
-            if (!XEX_SHA1.equals(m.optString("xex_sha1"))) {
-                throw new Problem("This package isn't from the supported disc (title ID 454108C0, media ID 186A1115).");
+            // Which edition of the game the code matches is checked by the PC tool when it builds the
+            // package and by the game library when it starts; the launcher only needs to know the game.
+            if (!m.optString("title_id").matches("[0-9A-Fa-f]{8}")) {
+                throw new Problem("The package's manifest.json has no valid title ID.");
             }
             return m;
         }
@@ -95,10 +96,12 @@ final class PackageImporter {
                     target = instance.library;
                     sha = sha256();
                     haveLibrary = true;
-                } else if (name.startsWith("game/") || name.startsWith("title_update/")) {
+                } else if (name.startsWith("game/") || name.startsWith("title_update/") || name.startsWith("presets/")) {
                     target = new File(instance.root, name);
+                } else if ("banner.png".equals(name) || "banner.jpg".equals(name)) {
+                    target = Banner.file(instance); // the package's own picture over the splash screen
                 } else {
-                    continue; // not part of format 1
+                    continue; // not part of formats 1 and 2
                 }
                 //noinspection ResultOfMethodCallIgnored
                 target.getParentFile().mkdirs();

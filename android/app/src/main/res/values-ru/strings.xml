@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="launcher_empty">Игры пока нет.\n\nСоберите пакет игры со своего диска Xbox 360 на ПК, скопируйте файл .daopkg на телефон и добавьте его кнопкой внизу.</string>
+    <string name="launcher_empty">Игры пока нет.\n\nСоберите пакет игры со своего диска Xbox 360 на ПК, скопируйте файл .x360pkg на телефон и добавьте его кнопкой внизу.</string>
     <string name="launcher_add">Добавить игру</string>
     <string name="launcher_import_title">Добавить эту игру?</string>
     <string name="launcher_import_message">%1$s\n%2$s\n\nЗаймёт %3$s на телефоне (свободно: %4$s).\n\nЭтот пакет — ваша личная копия игры: не раздавайте его.</string>
@@ -41,7 +41,7 @@
     <string name="driver_not_found">В этом файле нет драйвера .so.</string>
     <string name="launcher_empty_title">Игры пока нет</string>
     <string name="launcher_how">Как добавить игру</string>
-    <string name="launcher_how_text">1. На ПК соберите пакет игры со своего диска Dragon Age: Origins для Xbox 360 (английское/итальянское/испанское издание или диск 1 Ultimate Edition) ПК-программой DAODroid.\n\n2. Скопируйте файл .daopkg на телефон (кабелем, через облако, мессенджером).\n\n3. Нажмите + и выберите файл. Лаунчер проверит его и скопирует игру.\n\n4. Нажмите «Играть».\n\nПакет — ваша личная копия игры: не раздавайте его.</string>
+    <string name="launcher_how_text">1. На ПК соберите пакет игры со своего диска Dragon Age: Origins для Xbox 360 (английское/итальянское/испанское издание или диск 1 Ultimate Edition) ПК-программой DAODroid.\n\n2. Скопируйте файл .x360pkg на телефон (кабелем, через облако, мессенджером).\n\n3. Нажмите + и выберите файл. Лаунчер проверит его и скопирует игру.\n\n4. Нажмите «Играть».\n\nПакет — ваша личная копия игры: не раздавайте его.</string>
     <string name="nav_install_driver">Установить драйвер</string>
     <string name="nav_install_saves">Установить сохранения (.zip)</string>
     <string name="nav_pad_editor">Раскладка экранного геймпада</string>
@@ -80,11 +80,19 @@
     <string name="settings_env_hint">например, TU_DEBUG=sysmem</string>
     <string name="cache_import">Скопировать кэш шейдеров из другой игры</string>
     <string name="cache_imported">Кэш шейдеров: файлов %1$d из «%2$s»</string>
-    <string name="cache_no_other">Нет другой игры, из которой можно взять кэш шейдеров.</string>
+    <string name="cache_no_other">Нет другого экземпляра этой игры, из которого можно взять кэш шейдеров.</string>
     <string name="cache_import_to">В какую игру скопировать кэш шейдеров?</string>
     <string name="cache_import_from">Откуда взять</string>
     <string name="cache_up_to_date">У «%1$s» уже такой кэш шейдеров: копировать нечего.</string>
     <string name="settings_advanced">Дополнительно</string>
+    <string name="setting_preset">Пресет графики</string>
+    <string name="preset_default">Как в игре</string>
+    <string name="preset_medium">Средний</string>
+    <string name="preset_balanced">Сбалансированный</string>
+    <string name="preset_low">Низкий</string>
+    <string name="preset_very_low">Очень низкий</string>
+    <string name="setting_frame_rate">Частота кадров</string>
+    <string name="frame_rate_value">%1$d кадров/с</string>
     <string name="lod_full">Полные</string>
     <string name="lod_low">Низкие (по умолчанию)</string>
     <string name="lod_ultra_low">Очень низкие</string>

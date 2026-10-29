@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">DAODroid</string>
 
-    <string name="launcher_empty">No game yet.\n\nBuild a game package from your own Xbox 360 disc on your PC, copy the .daopkg file to this phone, and add it with the button below.</string>
+    <string name="launcher_empty">No game yet.\n\nBuild a game package from your own Xbox 360 disc on your PC, copy the .x360pkg file to this phone, and add it with the button below.</string>
     <string name="launcher_add">Add game</string>
     <string name="launcher_import_title">Add this game?</string>
     <string name="launcher_import_message">%1$s\n%2$s\n\nIt takes %3$s on this phone (free: %4$s).\n\nThis package is your own copy of the game: don\'t share it.</string>
@@ -43,7 +43,7 @@
     <string name="driver_not_found">No .so driver in that file.</string>
     <string name="launcher_empty_title">No game yet</string>
     <string name="launcher_how">How to add a game</string>
-    <string name="launcher_how_text">1. On your PC, build a game package from your own Xbox 360 disc of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition) with DAODroid\'s PC tool.\n\n2. Copy the .daopkg file to this phone (a cable, a cloud drive, a messenger).\n\n3. Tap + and pick the file. The launcher checks it and copies the game in.\n\n4. Tap Play.\n\nThe package is your own copy of the game: don\'t share it.</string>
+    <string name="launcher_how_text">1. On your PC, build a game package from your own Xbox 360 disc of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition) with DAODroid\'s PC tool.\n\n2. Copy the .x360pkg file to this phone (a cable, a cloud drive, a messenger).\n\n3. Tap + and pick the file. The launcher checks it and copies the game in.\n\n4. Tap Play.\n\nThe package is your own copy of the game: don\'t share it.</string>
     <string name="nav_install_driver">Install a driver</string>
     <string name="nav_install_saves">Install saves (.zip)</string>
     <string name="nav_pad_editor">On-screen gamepad layout</string>
@@ -83,11 +83,19 @@
     <string name="settings_env_hint">e.g. TU_DEBUG=sysmem</string>
     <string name="cache_import">Copy the shader cache from another game</string>
     <string name="cache_imported">Shader cache: %1$d files from %2$s</string>
-    <string name="cache_no_other">No other game to copy the shader cache from.</string>
+    <string name="cache_no_other">No other copy of this game to take the shader cache from.</string>
     <string name="cache_import_to">Which game gets the shader cache?</string>
     <string name="cache_import_from">Copy it from</string>
     <string name="cache_up_to_date">%1$s already has this shader cache: nothing to copy.</string>
     <string name="settings_advanced">Advanced</string>
+    <string name="setting_preset">Graphics preset</string>
+    <string name="preset_default">The game\'s own settings</string>
+    <string name="preset_medium">Medium</string>
+    <string name="preset_balanced">Balanced</string>
+    <string name="preset_low">Low</string>
+    <string name="preset_very_low">Very low</string>
+    <string name="setting_frame_rate">Frame rate</string>
+    <string name="frame_rate_value">%1$d fps</string>
     <string name="lod_full">Full</string>
     <string name="lod_low">Low (default)</string>
     <string name="lod_ultra_low">Ultra low</string>

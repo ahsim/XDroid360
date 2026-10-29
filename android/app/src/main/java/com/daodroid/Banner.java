@@ -1,5 +1,6 @@
 package com.daodroid;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
@@ -11,19 +12,26 @@ import java.nio.ByteOrder;
 import java.nio.file.Files;
 
 /**
- * An instance's card picture: the game's own splash screen (game/splash.dds, from the player's
- * disc), decoded once into the instance's banner.jpg. The launcher ships no game artwork.
+ * An instance's card picture, the first of: the package's banner.png/.jpg (copied to the
+ * instance's banner.jpg on import; BitmapFactory reads either); the game's own splash screen
+ * (game/splash.dds, from the player's disc), decoded once into banner.jpg; the launcher's
+ * picture for that title ID (res/drawable-nodpi/banner_<title id>.jpg), for games without a
+ * splash screen in their files (State of Decay).
  */
 final class Banner {
     private Banner() {}
 
+    static File file(Instance instance) {
+        return new File(instance.root, "banner.jpg");
+    }
+
     /** The instance's banner, made from its splash.dds the first time; null if there is none. */
-    static Bitmap load(Instance instance) {
-        File banner = new File(instance.root, "banner.jpg");
+    static Bitmap load(Context context, Instance instance) {
+        File banner = file(instance);
         if (!banner.isFile()) {
             try {
                 Bitmap made = decodeDds(new File(instance.game(), "splash.dds"));
-                if (made == null) return null;
+                if (made == null) return builtIn(context, instance);
                 // A card is wide: half the size is plenty.
                 Bitmap small = Bitmap.createScaledBitmap(made, made.getWidth() / 2, made.getHeight() / 2, true);
                 try (FileOutputStream out = new FileOutputStream(banner)) {
@@ -36,6 +44,14 @@ final class Banner {
             }
         }
         return BitmapFactory.decodeFile(banner.getAbsolutePath());
+    }
+
+    /** The launcher's own picture for the instance's game, or null. */
+    private static Bitmap builtIn(Context context, Instance instance) {
+        switch (instance.titleId()) {
+            case "584111E8": return BitmapFactory.decodeResource(context.getResources(), R.drawable.banner_584111e8);
+            default: return null;
+        }
     }
 
     /** A DXT1 (BC1) .dds, as the Xbox 360 game's splash is; null for any other format. */
