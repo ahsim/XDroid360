@@ -22,6 +22,7 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/texture_util.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/ui/vulkan/ui_samplers.h"
@@ -1214,6 +1215,28 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
     return false;
   }
   const LoadShaderInfo& load_shader_info = GetLoadShaderInfo(load_shader);
+
+  // DAO: DAO_GPU_STATS (dao_vulkan_stats.h): the loads, their guest bytes, and
+  // how many read memory the GPU wrote (a resolve's output).
+  if (dao_stats::Enabled()) {
+    dao_stats::Counters& stats = dao_stats::Current();
+    ++stats.texture_loads;
+    const uint32_t base_address = texture_key.base_page << 12;
+    const uint32_t mips_address = texture_key.mip_page << 12;
+    if (load_base) {
+      stats.texture_load_bytes += vulkan_texture.GetGuestBaseSize();
+    }
+    if (load_mips) {
+      stats.texture_load_bytes += vulkan_texture.GetGuestMipsSize();
+    }
+    if ((load_base && shared_memory().IsRangeWrittenByGpu(
+                          base_address, vulkan_texture.GetGuestBaseSize())) ||
+        (load_mips && vulkan_texture.GetGuestMipsSize() &&
+         shared_memory().IsRangeWrittenByGpu(
+             mips_address, vulkan_texture.GetGuestMipsSize()))) {
+      ++stats.texture_loads_gpu_written;
+    }
+  }
 
   // Get the guest layout.
   const texture_util::TextureGuestLayout& guest_layout =

@@ -178,6 +178,7 @@ public class LauncherActivity extends AppCompatActivity {
         else if (id == R.id.nav_cache) InstanceActions.choose(this, R.string.cache_import_to, instances,
                 i -> InstanceActions.importShaderCache(this, i, instances));
         else if (id == R.id.nav_pad) startActivity(new Intent(this, PadEditorActivity.class));
+        else if (id == R.id.nav_check) startActivity(new Intent(this, DeviceCheckActivity.class));
         else if (id == R.id.nav_bug) bugReport(instances.isEmpty() ? null : instances.get(0));
         else if (id == R.id.nav_about) showAbout();
         else return false;

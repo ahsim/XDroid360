@@ -64,7 +64,7 @@
     <string name="bug_report_inc_logcat">Лог Android для DAODroid (logcat)</string>
     <string name="bug_report_inc_config">Настройки игры (config.toml, env.txt)</string>
     <string name="bug_report_inc_crash">Записи о вылетах</string>
-    <string name="bug_report_always">Модель телефона, версия Android, GPU и сборка игры добавляются всегда. Сохранений и файлов игры в отчёте нет.</string>
+    <string name="bug_report_always">Модель телефона, версия Android, GPU, последняя проверка устройства и сборка игры добавляются всегда. Сохранений и файлов игры в отчёте нет.</string>
     <string name="bug_report_steps">1. Выберите игру выше.\n2. Нажмите «Отправить по почте».\n3. Выберите почтовое приложение (Gmail, Outlook…).\n4. Напишите пару слов о том, что случилось, и отправьте.</string>
     <string name="bug_report_send_email">Отправить по почте</string>
     <string name="bug_report_no_email_title">Нет почтового приложения?</string>
@@ -76,7 +76,7 @@
     <string name="bug_report_no_mail_app">Почтовое приложение не найдено: сохраните отчёт в файл.</string>
     <string name="settings_graphics">Графика</string>
     <string name="settings_env">Переменные окружения</string>
-    <string name="settings_env_help">KEY=VALUE, по одной на строку, для отладки: TU_DEBUG=sysmem (Turnip), DAO_PERF_OVERLAY=0, DAO_PROFILE=20 (профиль CPU в dao.log), DAO_GPU_FRAME_TRACE=&lt;кадр&gt;. Важнее настроек выше. Сохраняются в userdata/env.txt при выходе с экрана.</string>
+    <string name="settings_env_help">KEY=VALUE, по одной на строку, для отладки: TU_DEBUG=sysmem (Turnip), DAO_PERF_OVERLAY=0, DAO_PROFILE=20 (профиль CPU в dao.log), DAO_GPU_STATS=1 (работа видеокарты за кадр в dao.log), DAO_GPU_FRAME_TRACE=&lt;кадр&gt;. Важнее настроек выше. Сохраняются в userdata/env.txt при выходе с экрана.</string>
     <string name="settings_env_hint">например, TU_DEBUG=sysmem</string>
     <string name="cache_import">Скопировать кэш шейдеров из другой игры</string>
     <string name="cache_imported">Кэш шейдеров: файлов %1$d из «%2$s»</string>
@@ -88,4 +88,32 @@
     <string name="lod_full">Полные</string>
     <string name="lod_low">Низкие (по умолчанию)</string>
     <string name="lod_ultra_low">Очень низкие</string>
+    <string name="check_title">Проверка устройства</string>
+    <string name="check_intro">Что Vulkan этого телефона даёт игре с каждым драйвером, на котором она может работать, и что это значит. Результат попадает и в отчёт об ошибке.</string>
+    <string name="check_phone">Этот телефон</string>
+    <string name="check_again">Проверить заново</string>
+    <string name="check_running">Проверка…</string>
+    <string name="check_details">Подробности</string>
+    <string name="check_driver_builtin">Встроенный Turnip (Adreno 8xx)</string>
+    <string name="check_driver_system">Драйвер телефона</string>
+    <string name="check_driver_custom">%1$s: установленный драйвер %2$s</string>
+    <string name="check_verdict_ok">Должна работать</string>
+    <string name="check_verdict_workaround">Должна работать, с обходными путями</string>
+    <string name="check_verdict_problem">Может работать, но части эффектов не будет</string>
+    <string name="check_verdict_fail">С этим драйвером не запустится</string>
+    <string name="check_crashed">В прошлый раз проверка с этим драйвером упала. Нажми «Проверить заново», чтобы попробовать ещё раз.</string>
+    <string name="check_no_vulkan">Vulkan не запустился с этим драйвером: %1$s</string>
+    <string name="check_no_independent_blend">Нет раздельного смешивания (independentBlend): графика игры не запустится.</string>
+    <string name="check_no_swapchain">Нет вывода на экран (VK_KHR_swapchain): показать картинку нельзя.</string>
+    <string name="check_no_vertex_stores">Вершинные шейдеры не могут писать в память (vertexPipelineStoresAndAtomics): эффекты, которые на это опираются, пропускаются.</string>
+    <string name="check_no_fragment_stores">Пиксельные шейдеры не могут писать в память (fragmentStoresAndAtomics): эффекты, которые на это опираются, пропускаются.</string>
+    <string name="check_no_bc">Нет сжатых текстур (BC1–BC5): они распаковываются, поэтому занимают в 4–8 раз больше памяти и грузятся дольше.</string>
+    <string name="check_no_geometry">Нет геометрических шейдеров: точки и прямоугольники рисуются треугольниками (чуть больше работы видеокарте).</string>
+    <string name="check_no_d24s8">Нет 24-битного буфера глубины: используется 32-битный.</string>
+    <string name="check_rt_fbo">Отрисовка: обычный путь (тот, что игра использует на большинстве видеокарт).</string>
+    <string name="check_rt_fsi_possible">Отрисовка: обычный путь; точный (fragment shader interlock) тоже бы работал.</string>
+    <string name="check_no_sparse">Нет разреженных буферов: копия памяти консоли на видеокарте (512 MB) выделяется целиком.</string>
+    <string name="check_no_anisotropy">Нет анизотропной фильтрации: текстуры под углом выглядят размытее.</string>
+    <string name="check_low_ram">%1$s GB оперативной памяти: на таком объёме игру не пробовали, памяти может не хватить.</string>
+    <string name="check_page_size">Страницы памяти %1$d KB: на таких телефонах игру ещё не пробовали.</string>
 </resources>

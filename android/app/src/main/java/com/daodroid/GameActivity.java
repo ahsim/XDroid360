@@ -298,12 +298,17 @@ public class GameActivity extends SDLActivity {
      * from the shared storage (code can't be mapped from there), or null for the phone's own.
      */
     File chosenDriver(File install) {
+        return chosenDriver(this, current, install);
+    }
+
+    /** As above, for an instance (null: the dev entry); also the device check's (DeviceCheck). */
+    static File chosenDriver(Context context, Instance current, File install) {
         String choice = current != null ? current.driver : Instance.DRIVER_CUSTOM;
         if (Instance.DRIVER_SYSTEM.equals(choice)) {
             return null;
         }
         if (Instance.DRIVER_BUILTIN.equals(choice)) {
-            File builtin = new File(getApplicationInfo().nativeLibraryDir, BUILTIN_DRIVER);
+            File builtin = new File(context.getApplicationInfo().nativeLibraryDir, BUILTIN_DRIVER);
             if (builtin.isFile()) return builtin;
             Log.w(TAG, "No built-in driver in this APK; using the phone's own");
             return null;
@@ -314,7 +319,7 @@ public class GameActivity extends SDLActivity {
         }
         for (File file : files) {
             if (file.isFile() && file.getName().endsWith(".so")) {
-                return copyToInternal(file, current != null && !current.isDev() ? "driver/" + current.id : "driver");
+                return copyToInternal(context, file, current != null && !current.isDev() ? "driver/" + current.id : "driver");
             }
         }
         return null;
@@ -322,7 +327,11 @@ public class GameActivity extends SDLActivity {
 
     /** A copy of file in the app's internal files/dir (refreshed when the original changes). */
     File copyToInternal(File file, String dir) {
-        File internal = new File(new File(getFilesDir(), dir), file.getName());
+        return copyToInternal(this, file, dir);
+    }
+
+    static File copyToInternal(Context context, File file, String dir) {
+        File internal = new File(new File(context.getFilesDir(), dir), file.getName());
         if (!internal.isFile() || internal.length() != file.length() || internal.lastModified() < file.lastModified()) {
             try {
                 //noinspection ResultOfMethodCallIgnored

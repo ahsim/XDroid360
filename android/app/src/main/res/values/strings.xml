@@ -66,7 +66,7 @@
     <string name="bug_report_inc_logcat">Android\'s log of DAODroid (logcat)</string>
     <string name="bug_report_inc_config">The game\'s settings (config.toml, env.txt)</string>
     <string name="bug_report_inc_crash">Crash records</string>
-    <string name="bug_report_always">The phone\'s model, Android version, GPU and the game\'s build are always included. No saves, no game files.</string>
+    <string name="bug_report_always">The phone\'s model, Android version, GPU, the last device check and the game\'s build are always included. No saves, no game files.</string>
     <string name="bug_report_steps">1. Choose the game above.\n2. Tap Send by email.\n3. Pick your mail app (Gmail, Outlook…).\n4. Write a few words about what happened and send.</string>
     <string name="bug_report_send_email">Send by email</string>
     <string name="bug_report_no_email_title">No mail app on this device?</string>
@@ -79,7 +79,7 @@
     <string name="bug_report_no_mail_app">No mail app found: save the report to a file instead.</string>
     <string name="settings_graphics">Graphics</string>
     <string name="settings_env">Environment variables</string>
-    <string name="settings_env_help">KEY=VALUE, one per line, for troubleshooting: TU_DEBUG=sysmem (Turnip), DAO_PERF_OVERLAY=0, DAO_PROFILE=20 (CPU profile in dao.log), DAO_GPU_FRAME_TRACE=&lt;frame&gt;. They win over the settings above. Saved to userdata/env.txt when you leave this screen.</string>
+    <string name="settings_env_help">KEY=VALUE, one per line, for troubleshooting: TU_DEBUG=sysmem (Turnip), DAO_PERF_OVERLAY=0, DAO_PROFILE=20 (CPU profile in dao.log), DAO_GPU_STATS=1 (GPU work per frame in dao.log), DAO_GPU_FRAME_TRACE=&lt;frame&gt;. They win over the settings above. Saved to userdata/env.txt when you leave this screen.</string>
     <string name="settings_env_hint">e.g. TU_DEBUG=sysmem</string>
     <string name="cache_import">Copy the shader cache from another game</string>
     <string name="cache_imported">Shader cache: %1$d files from %2$s</string>
@@ -91,4 +91,32 @@
     <string name="lod_full">Full</string>
     <string name="lod_low">Low (default)</string>
     <string name="lod_ultra_low">Ultra low</string>
+    <string name="check_title">Device check</string>
+    <string name="check_intro">What this phone\'s Vulkan offers the game, with each driver it could run on, and what that means. The result also goes into bug reports.</string>
+    <string name="check_phone">This phone</string>
+    <string name="check_again">Check again</string>
+    <string name="check_running">Checking…</string>
+    <string name="check_details">Details</string>
+    <string name="check_driver_builtin">Built-in Turnip (Adreno 8xx)</string>
+    <string name="check_driver_system">The phone\'s own driver</string>
+    <string name="check_driver_custom">%1$s: installed driver %2$s</string>
+    <string name="check_verdict_ok">Should run</string>
+    <string name="check_verdict_workaround">Should run, with workarounds</string>
+    <string name="check_verdict_problem">May run, but some effects would be missing</string>
+    <string name="check_verdict_fail">Won\'t run with this driver</string>
+    <string name="check_crashed">The check crashed with this driver last time. Tap Check again to retry.</string>
+    <string name="check_no_vulkan">Vulkan didn\'t start with this driver: %1$s</string>
+    <string name="check_no_independent_blend">No independent blending (independentBlend): the game\'s graphics can\'t start.</string>
+    <string name="check_no_swapchain">No swapchain (VK_KHR_swapchain): nothing can be shown on the screen.</string>
+    <string name="check_no_vertex_stores">Vertex shaders can\'t write to memory (vertexPipelineStoresAndAtomics): effects that rely on it are skipped.</string>
+    <string name="check_no_fragment_stores">Pixel shaders can\'t write to memory (fragmentStoresAndAtomics): effects that rely on it are skipped.</string>
+    <string name="check_no_bc">No compressed textures (BC1–BC5): they are unpacked, so textures take up to 4–8 times more memory and load slower.</string>
+    <string name="check_no_geometry">No geometry shaders: points and rectangles are drawn as triangles instead (a little more work for the GPU).</string>
+    <string name="check_no_d24s8">No 24-bit depth buffer: a 32-bit one is used instead.</string>
+    <string name="check_rt_fbo">Render targets: the usual path (the one the game uses on most GPUs).</string>
+    <string name="check_rt_fsi_possible">Render targets: the usual path; the exact one (fragment shader interlock) would also work.</string>
+    <string name="check_no_sparse">No sparse buffers: the GPU\'s copy of the console\'s memory (512 MB) is allocated in full.</string>
+    <string name="check_no_anisotropy">No anisotropic filtering: textures at an angle look blurrier.</string>
+    <string name="check_low_ram">%1$s GB of RAM: the game hasn\'t been tried with this little; it may run out of memory.</string>
+    <string name="check_page_size">%1$d KB memory pages: the game hasn\'t been tried on such phones yet.</string>
 </resources>

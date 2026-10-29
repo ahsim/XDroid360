@@ -134,6 +134,8 @@ public class BugReportActivity extends AppCompatActivity {
         Instance i = selected();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
             put(zip, "device.txt", deviceInfo().getBytes(StandardCharsets.UTF_8));
+            // The last device check's results (DeviceCheck), one file per driver.
+            for (java.util.Map.Entry<String, byte[]> e : DeviceCheck.saved(this).entrySet()) put(zip, e.getKey(), e.getValue());
             if (i != null) {
                 put(zip, "instance.txt", (i.name + "\n" + i.buildLabel() + "\ndriver " + i.driver + ", sysmem " + i.sysmem
                         + ", texture LOD " + i.textureLodBias + ", prerotate " + i.prerotate + "\n\n"

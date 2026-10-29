@@ -28,6 +28,10 @@
     </group>
     <group android:id="@+id/group_help">
         <item
+            android:id="@+id/nav_check"
+            android:icon="@drawable/ic_memory"
+            android:title="@string/check_title" />
+        <item
             android:id="@+id/nav_bug"
             android:icon="@drawable/ic_bug"
             android:title="@string/bug_report_title" />

@@ -5,12 +5,58 @@
 #include <cstring>
 
 #include "xenia/base/logging.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
 
 namespace xe {
 namespace gpu {
 namespace vulkan {
+
+std::string VulkanCommandProcessor::DaoDescribeHostPaths() const {
+  const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
+  const ui::vulkan::VulkanDevice::Properties& p = vulkan_device->properties();
+  const ui::vulkan::VulkanInstance::Functions& ifn =
+      vulkan_device->vulkan_instance()->functions();
+  // As vulkan_texture_cache.cc decides per format: decompressed to RGBA8
+  // unless sampled with linear filtering.
+  std::string decompressed;
+  static const std::pair<const char*, VkFormat> kBc[] = {
+      {"BC1", VK_FORMAT_BC1_RGBA_UNORM_BLOCK},
+      {"BC2", VK_FORMAT_BC2_UNORM_BLOCK},
+      {"BC3", VK_FORMAT_BC3_UNORM_BLOCK},
+      {"BC4", VK_FORMAT_BC4_UNORM_BLOCK},
+      {"BC5", VK_FORMAT_BC5_UNORM_BLOCK}};
+  for (const auto& bc : kBc) {
+    VkFormatProperties format_properties;
+    ifn.vkGetPhysicalDeviceFormatProperties(vulkan_device->physical_device(),
+                                            bc.second, &format_properties);
+    constexpr VkFormatFeatureFlags kLinearFilterFeatures =
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    if ((format_properties.optimalTilingFeatures & kLinearFilterFeatures) !=
+        kLinearFilterFeatures) {
+      decompressed += decompressed.empty() ? bc.first : std::string(",") + bc.first;
+    }
+  }
+  return fmt::format(
+      "{} (Vulkan {}.{}, driver id {}): render targets {}; BC textures {}; "
+      "points/rectangles {}; memexport vertex {}, pixel {}; shared memory {}; "
+      "resolution scale {}x{}",
+      p.deviceName, VK_API_VERSION_MAJOR(p.apiVersion),
+      VK_API_VERSION_MINOR(p.apiVersion), int(p.driverID),
+      render_target_cache_->GetPath() ==
+              RenderTargetCache::Path::kPixelShaderInterlock
+          ? "fragment shader interlock"
+          : "host (FBO)",
+      decompressed.empty() ? "native" : "decompressed: " + decompressed,
+      p.geometryShader ? "geometry shaders" : "expanded in the vertex shader",
+      p.vertexPipelineStoresAndAtomics ? "yes" : "skipped",
+      p.fragmentStoresAndAtomics ? "yes" : "skipped",
+      p.sparseResidencyBuffer ? "sparse" : "allocated in full",
+      texture_cache_->draw_resolution_scale_x(),
+      texture_cache_->draw_resolution_scale_y());
+}
 
 bool VulkanCommandProcessor::DaoReadGpuWrittenMemory(
     uint32_t address, uint32_t length, uint32_t pixel_size_log2,
@@ -30,6 +76,8 @@ bool VulkanCommandProcessor::DaoReadGpuWrittenMemory(
   if (readback_buffer == VK_NULL_HANDLE) {
     return false;
   }
+  DAO_STATS_ADD(readbacks, 1);  // DAO_GPU_STATS (dao_vulkan_stats.h).
+  DAO_STATS_ADD(readback_bytes, length);
   const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
   const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
   const VkDevice device = vulkan_device->device();

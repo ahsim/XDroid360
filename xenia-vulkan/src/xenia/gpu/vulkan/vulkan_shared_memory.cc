@@ -15,6 +15,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
@@ -384,6 +385,14 @@ bool VulkanSharedMemory::UploadRanges(
     uint32_t num_upload_ranges) {
   if (!num_upload_ranges) {
     return true;
+  }
+  // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
+  if (dao_stats::Enabled()) {
+    for (uint32_t i = 0; i < num_upload_ranges; ++i) {
+      dao_stats::Current().upload_bytes += uint64_t(upload_page_ranges[i].second)
+                                           << page_size_log2();
+    }
+    dao_stats::Current().uploads += num_upload_ranges;
   }
 
   auto& range_front = upload_page_ranges[0];

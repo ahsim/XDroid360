@@ -152,6 +152,12 @@ class VulkanCommandProcessor final : public CommandProcessor {
                                uint32_t pixel_size_log2,
                                std::vector<uint8_t>& out);
 
+  // DAO: the paths this backend took on this GPU (render targets, texture
+  // decompression, primitive expansion, memexport), in one line for the
+  // game's log; the launcher's device check predicts the same from outside.
+  // On the command processor thread, after SetupContext (CallInThread).
+  std::string DaoDescribeHostPaths() const;
+
   void ClearCaches() override;
 
   void TracePlaybackWroteMemory(uint32_t base_ptr, uint32_t length) override;

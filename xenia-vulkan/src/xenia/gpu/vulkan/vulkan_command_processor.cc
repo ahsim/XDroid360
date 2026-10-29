@@ -23,6 +23,7 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
@@ -1463,7 +1464,9 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                        uint32_t frontbuffer_height) {
   SCOPE_profile_cpu_f("gpu");
   EndZPDFrame();
-  // DAO: per-frame draw statistics and DAO_GPU_FRAME_TRACE (as D3D12).
+  // DAO: per-frame draw statistics and DAO_GPU_FRAME_TRACE (as D3D12), and
+  // DAO_GPU_STATS (dao_vulkan_stats.h; before OnSwap resets the draw count).
+  dao_stats::OnSwap(dao_trace::CurrentStats().issued);
   dao_trace::OnSwap(frontbuffer_ptr);
 
   ui::Presenter* presenter = graphics_system_->presenter();
@@ -2008,6 +2011,7 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   }
   current_render_pass_ = render_pass;
   current_framebuffer_ = framebuffer;
+  DAO_STATS_ADD(passes, 1);  // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
   VkRenderPassBeginInfo render_pass_begin_info;
   render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
   render_pass_begin_info.pNext = nullptr;
@@ -3864,6 +3868,7 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenQuery(
     }
 
     if (wait_for > GetCompletedSubmission()) {
+      dao_stats::WaitTimer dao_wait;
       completion_timeline_.AwaitSubmissionAndUpdateCompleted(wait_for);
       PumpQueryResolves();
     }
@@ -4049,6 +4054,7 @@ bool VulkanCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
   }
 
   if (wait_for_submission > GetCompletedSubmission()) {
+    dao_stats::WaitTimer dao_wait;
     completion_timeline_.AwaitSubmissionAndUpdateCompleted(wait_for_submission);
   }
 
@@ -4195,6 +4201,7 @@ void VulkanCommandProcessor::AwaitVIZQueryResolve(
   }
 
   if (wait_for_submission > GetCompletedSubmission()) {
+    dao_stats::WaitTimer dao_wait;
     completion_timeline_.AwaitSubmissionAndUpdateCompleted(wait_for_submission);
   }
 
@@ -4246,7 +4253,10 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
     await_submission = GetCurrentSubmission() - 1;
   }
 
-  completion_timeline_.AwaitSubmissionAndUpdateCompleted(await_submission);
+  {
+    dao_stats::WaitTimer dao_wait;
+    completion_timeline_.AwaitSubmissionAndUpdateCompleted(await_submission);
+  }
 
   const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
 
@@ -4676,6 +4686,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     submit_info.pCommandBuffers = &command_buffer.buffer;
     const VkResult submit_result = completion_timeline_.AcquireFenceAndSubmit(
         vulkan_device->queue_family_graphics_compute(), 0, 1, &submit_info);
+    DAO_STATS_ADD(submissions, 1);  // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
     if (submit_result != VK_SUCCESS) {
       XELOGE("Failed to submit a GPU emulation Vulkan command buffer: {}",
              vk::to_string(vk::Result(submit_result)));

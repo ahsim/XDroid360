@@ -25,6 +25,7 @@
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/texture_cache.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/gpu/xenos.h"
@@ -1164,6 +1165,16 @@ bool VulkanRenderTargetCache::Resolve(
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
   }
+  // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
+  DAO_STATS_ADD(resolves, 1);
+  DAO_STATS_ADD(resolve_pixels,
+                uint64_t(resolve_info.coordinate_info.width_div_8) *
+                    resolve_info.height_div_8 * 64);
+  DAO_STATS_ADD(resolve_clears,
+                (resolve_info.rb_copy_control.color_clear_enable ||
+                 resolve_info.rb_copy_control.depth_clear_enable)
+                    ? 1
+                    : 0);
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
@@ -4719,6 +4730,13 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
     const uint64_t* render_target_resolve_clear_values,
     const Transfer::Rectangle* resolve_clear_rectangle) {
   assert_true(GetPath() == Path::kHostRenderTargets);
+
+  // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
+  if (render_target_transfers && dao_stats::Enabled()) {
+    for (uint32_t i = 0; i < render_target_count; ++i) {
+      dao_stats::Current().transfers += render_target_transfers[i].size();
+    }
+  }
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();

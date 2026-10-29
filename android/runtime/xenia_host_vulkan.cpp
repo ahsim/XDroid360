@@ -22,6 +22,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/dao_host.h"
 #include "xenia/dao_live_settings.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
 #include "xenia/gpu/xenos.h"
@@ -113,6 +114,8 @@ namespace dao::gpu
     {
         // On Android Xenia's log goes to logcat (tag dao-xenia), not a file.
         xe::InitializeLogging("dao-xenia");
+        // DAO_GPU_STATS' reports into dao.log, next to the game's own.
+        xe::gpu::vulkan::dao_stats::SetSink([](const char* line) { LOGI("{}", line); });
 
         if (s_windowHost.loaderLibrary)
             xe::ui::vulkan::dao_icd::SetLoaderLibrary(s_windowHost.loaderLibrary);
@@ -162,6 +165,10 @@ namespace dao::gpu
         *g_memory.Translate<u32>(0x7FC80000 + 0x1951 * 4) = 1; // interrupt status: vblank
 
         LOGI("Xenia Vulkan graphics initialized ({})", s_graphics->name());
+        // What the backend chose on this GPU, into dao.log (Xenia's own device listing goes
+        // to logcat only); queued after the command processor's setup on its thread.
+        auto* processor = static_cast<xe::gpu::vulkan::VulkanCommandProcessor*>(s_graphics->command_processor());
+        processor->CallInThread([processor] { LOGI("GPU paths: {}", processor->DaoDescribeHostPaths()); });
         return true;
     }
 
