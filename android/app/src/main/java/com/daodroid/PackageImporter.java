@@ -133,6 +133,7 @@ final class PackageImporter {
                     android.util.Log.w("DAODroid", "shader cache from " + warm.id + ": " + cacheError);
                 }
             }
+            instance.name = Instance.uniqueName(Instance.list(context), instance.name);
             instance.save(); // last: an instance without instance.json isn't listed
             ok = true;
         } finally {

@@ -246,6 +246,15 @@ final class Instance {
         return i;
     }
 
+    /** name, or "name 2", "name 3"... if another instance already has it. */
+    static String uniqueName(java.util.List<Instance> all, String name) {
+        java.util.Set<String> taken = new java.util.HashSet<>();
+        for (Instance i : all) taken.add(i.name);
+        String unique = name;
+        for (int n = 2; taken.contains(unique); n++) unique = name + " " + n;
+        return unique;
+    }
+
     /** Removes the instance's files (its game, saves and library). */
     void delete(Context context) {
         if (isDev()) {
