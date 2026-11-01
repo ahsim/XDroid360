@@ -38,6 +38,7 @@ final class Instance {
     int textureLodBias = 1;
     boolean prerotate = true;
     boolean perfOverlay = true;
+    boolean vibrateOnTouch = false;
     /** The frame rate picked, 0 for the package's default (options.frame_rate). */
     int frameRate = 0;
     /** The graphics preset picked (options.preset), "" for the game's own settings. */
@@ -130,6 +131,7 @@ final class Instance {
             s.put("texture_lod_bias", textureLodBias);
             s.put("prerotate", prerotate);
             s.put("perf_overlay", perfOverlay);
+            s.put("vibrate_on_touch", vibrateOnTouch);
             s.put("frame_rate", frameRate);
             s.put("preset", preset);
             s.put("preset_written", presetWritten);
@@ -163,6 +165,7 @@ final class Instance {
                 textureLodBias = s.optInt("texture_lod_bias", textureLodBias);
                 prerotate = s.optBoolean("prerotate", prerotate);
                 perfOverlay = s.optBoolean("perf_overlay", perfOverlay);
+                vibrateOnTouch = s.optBoolean("vibrate_on_touch", vibrateOnTouch);
                 frameRate = s.optInt("frame_rate", frameRate);
                 preset = s.optString("preset", preset);
                 presetWritten = s.optBoolean("preset_written", presetWritten);

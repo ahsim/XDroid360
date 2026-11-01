@@ -92,6 +92,9 @@ public class InstanceActivity extends AppCompatActivity {
         MaterialSwitch perf = findViewById(R.id.perf);
         perf.setChecked(instance.perfOverlay);
         perf.setOnCheckedChangeListener((b, on) -> { instance.perfOverlay = on; save(); });
+        MaterialSwitch vibrate = findViewById(R.id.vibrate);
+        vibrate.setChecked(instance.vibrateOnTouch);
+        vibrate.setOnCheckedChangeListener((b, on) -> { instance.vibrateOnTouch = on; save(); });
 
         env = findViewById(R.id.env);
         env.setText(readEnv());

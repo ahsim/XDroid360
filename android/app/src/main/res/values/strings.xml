@@ -39,6 +39,7 @@
     </string-array>
     <string name="setting_prerotate">Pre-rotate the frame (saves GPU work; uses plain scaling)</string>
     <string name="setting_perf">Performance overlay</string>
+    <string name="setting_vibrate">Vibrate on on-screen buttons</string>
     <string name="driver_installed">Driver installed: %1$s</string>
     <string name="driver_not_found">No .so driver in that file.</string>
     <string name="launcher_empty_title">No game yet</string>

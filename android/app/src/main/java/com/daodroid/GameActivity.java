@@ -118,7 +118,9 @@ public class GameActivity extends SDLActivity {
         super.onCreate(savedInstanceState);
         // The on-screen gamepad over SDL's surface (mLayout holds the surface).
         if (mLayout != null) {
-            mLayout.addView(new VirtualPadView(this), new android.view.ViewGroup.LayoutParams(
+            VirtualPadView pad = new VirtualPadView(this);
+            pad.setVibrateOnTouch(current != null && current.vibrateOnTouch);
+            mLayout.addView(pad, new android.view.ViewGroup.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
             setUpPerfOverlay();
         }

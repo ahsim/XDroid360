@@ -189,6 +189,12 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/setting_perf" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/vibrate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/setting_vibrate" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

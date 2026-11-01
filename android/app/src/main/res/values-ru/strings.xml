@@ -37,6 +37,7 @@
     </string-array>
     <string name="setting_prerotate">Поворачивать кадр заранее (меньше работы GPU, простое масштабирование)</string>
     <string name="setting_perf">Панель производительности</string>
+    <string name="setting_vibrate">Вибрация экранных кнопок</string>
     <string name="driver_installed">Драйвер установлен: %1$s</string>
     <string name="driver_not_found">В этом файле нет драйвера .so.</string>
     <string name="launcher_empty_title">Игры пока нет</string>

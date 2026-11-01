@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -46,6 +47,7 @@ public class VirtualPadView extends View {
     private final Object[] dragTarget = new Object[MAX_POINTERS];
     private final float[] dragDx = new float[MAX_POINTERS], dragDy = new float[MAX_POINTERS];
     private final SharedPreferences prefs;
+    private boolean vibrateOnTouch;
 
     // Per pointer: the element and, for a button or the D-pad, its bits.
     private final int[] element = new int[MAX_POINTERS];
@@ -107,6 +109,17 @@ public class VirtualPadView extends View {
         editStroke.setColor(0xC0FFD040);
         for (int i = 0; i < MAX_POINTERS; i++) element[i] = NONE;
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** A light tick when a button or the d-pad is pressed (a per-instance setting); off by default. */
+    public void setVibrateOnTouch(boolean on) {
+        vibrateOnTouch = on;
+    }
+
+    private void tick() {
+        if (vibrateOnTouch) {
+            performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+        }
     }
 
     @Override
@@ -319,6 +332,7 @@ public class VirtualPadView extends View {
                 bit[id] = b.bit;
                 if (b.bit == LT) leftTrigger = 1; else if (b.bit == RT) rightTrigger = 1; else buttons |= b.bit;
                 send();
+                tick();
                 return BUTTON;
             }
         }
@@ -326,6 +340,7 @@ public class VirtualPadView extends View {
             bit[id] = dpadBits(x, y);
             buttons |= bit[id];
             send();
+            tick();
             return DPAD;
         }
         if (leftStickPointer < 0 && Math.hypot(x - leftBaseX, y - leftBaseY) <= stickRadius * 1.5f) {
