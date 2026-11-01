@@ -1,0 +1,3 @@
+tests/insn/gen/
+tests/insn/obj/
+tests/insn/expect.txt
