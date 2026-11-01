@@ -185,6 +185,7 @@ namespace dao::gpu
     }
 
     void XeniaSetFullscreen(bool) {}
+    bool XeniaFullscreen() { return true; }
 
     void XeniaSetOutputScaling(Upscaler upscaler, float sharpness)
     {
