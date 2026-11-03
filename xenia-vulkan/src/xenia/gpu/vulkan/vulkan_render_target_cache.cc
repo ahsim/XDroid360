@@ -24,6 +24,7 @@
 #include "xenia/gpu/spirv_builder.h"
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/d3d12/dao_frame_trace.h"
 #include "xenia/gpu/texture_cache.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
@@ -594,6 +595,8 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
                                  resolve_copy_shader_info.debug_name);
     resolve_copy_pipelines_[i] = resolve_copy_pipeline;
   }
+  // DAO: copies straight from render targets (dao_resolve_to_textures).
+  DaoInitializeDirectResolve();
 
   // TODO(Triang3l): All paths (FSI).
 
@@ -1056,6 +1059,7 @@ void VulkanRenderTargetCache::Shutdown(bool from_destructor) {
   }
   render_passes_.clear();
 
+  DaoShutdownDirectResolve();
   for (VkPipeline& resolve_copy_native_pipeline :
        resolve_copy_native_pipelines_) {
     ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyPipeline, device,
@@ -1217,14 +1221,6 @@ bool VulkanRenderTargetCache::Resolve(
   // Copying.
   bool copied = false;
   if (resolve_info.copy_dest_extent_length) {
-    if (GetPath() == Path::kHostRenderTargets) {
-      // Dump the current contents of the render targets owning the affected
-      // range to edram_buffer_.
-      // TODO(Triang3l): Direct host render target -> shared memory resolve
-      // shaders for non-converting cases.
-      DumpRenderTargets(dump_base, dump_row_length_used, dump_rows, dump_pitch,
-                        copy_native);
-    }
     bool copy_dest_scaled = draw_resolution_scaled && !copy_native;
 
     draw_util::ResolveCopyShaderConstants copy_shader_constants;
@@ -1234,6 +1230,27 @@ bool VulkanRenderTargetCache::Resolve(
         copy_native ? 1 : draw_resolution_scale_y(), copy_shader_constants,
         copy_group_count_x, copy_group_count_y);
     assert_true(copy_group_count_x && copy_group_count_y);
+
+    // DAO: a plain copy of one render target is done straight from it rather
+    // than from its dump to edram_buffer_, and the textures of the resolved
+    // memory are written from it too (dao_resolve_to_textures).
+    VulkanTextureCache::DaoResolvedArea resolved_area;
+    VulkanRenderTarget* resolved_area_source = nullptr;
+    if (GetPath() == Path::kHostRenderTargets) {
+      if (dao_resolve_direct_pipeline_ != VK_NULL_HANDLE) {
+        GetResolveCopyRectanglesToDump(dump_base, dump_row_length_used,
+                                       dump_rows, dump_pitch, dump_rectangles_);
+        resolved_area_source = DaoGetResolvedArea(
+            resolve_info, copy_shader, copy_dest_scaled, dump_base,
+            dump_row_length_used, dump_rows, dump_pitch, resolved_area);
+      }
+      if (!resolved_area_source) {
+        // Dump the current contents of the render targets owning the affected
+        // range to edram_buffer_.
+        DumpRenderTargets(dump_base, dump_row_length_used, dump_rows,
+                          dump_pitch, copy_native);
+      }
+    }
     if (copy_shader != draw_util::ResolveCopyShaderIndex::kUnknown) {
       const draw_util::ResolveCopyShaderInfo& copy_shader_info =
           draw_util::resolve_copy_shader_info[size_t(copy_shader)];
@@ -1401,19 +1418,36 @@ bool VulkanRenderTargetCache::Resolve(
                   0, 0, nullptr, 1, &buffer_barrier, 0, nullptr);
             }
           }
-          UseEdramBuffer(EdramBufferUsage::kComputeRead);
           // Fully native resolves use the unscaled shader variant with the
           // full push constant layout.
           VkPipelineLayout copy_pipeline_layout =
               copy_native ? resolve_copy_native_pipeline_layout_
                           : resolve_copy_pipeline_layout_;
-          command_processor_.BindExternalComputePipeline(
-              copy_native ? resolve_copy_native_pipelines_[size_t(copy_shader)]
-                          : resolve_copy_pipelines_[size_t(copy_shader)]);
           VkDescriptorSet descriptor_sets[kResolveCopyDescriptorSetCount] = {};
-          descriptor_sets[kResolveCopyDescriptorSetEdram] =
-              edram_storage_buffer_descriptor_set_;
           descriptor_sets[kResolveCopyDescriptorSetDest] = descriptor_set_dest;
+          if (resolved_area_source) {
+            // DAO: from the render target, its EDRAM base relative to the
+            // render target's.
+            TransitionRenderTarget(*resolved_area_source,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_ACCESS_SHADER_READ_BIT,
+                                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            copy_pipeline_layout = dao_resolve_direct_pipeline_layout_;
+            command_processor_.BindExternalComputePipeline(
+                dao_resolve_direct_pipeline_);
+            descriptor_sets[kResolveCopyDescriptorSetEdram] =
+                resolved_area.source;
+            copy_shader_constants.dest_relative.edram_info.base_tiles -=
+                resolved_area_source->key().base_tiles;
+          } else {
+            UseEdramBuffer(EdramBufferUsage::kComputeRead);
+            command_processor_.BindExternalComputePipeline(
+                copy_native
+                    ? resolve_copy_native_pipelines_[size_t(copy_shader)]
+                    : resolve_copy_pipelines_[size_t(copy_shader)]);
+            descriptor_sets[kResolveCopyDescriptorSetEdram] =
+                edram_storage_buffer_descriptor_set_;
+          }
           command_buffer.CmdVkBindDescriptorSets(
               VK_PIPELINE_BIND_POINT_COMPUTE, copy_pipeline_layout, 0,
               uint32_t(xe::countof(descriptor_sets)), descriptor_sets, 0,
@@ -1464,10 +1498,16 @@ bool VulkanRenderTargetCache::Resolve(
           }
 
           // Mark the range as scaled only if that's where the data actually
-          // went.
+          // went. DAO: the textures of a plain copy are written from the
+          // render target.
           texture_cache.MarkRangeAsResolved(
               resolve_info.copy_dest_extent_start,
-              resolve_info.copy_dest_extent_length, scaled_buffer_ready);
+              resolve_info.copy_dest_extent_length, scaled_buffer_ready,
+              resolved_area_source != nullptr);
+          if (resolved_area_source &&
+              texture_cache.DaoPrepareResolvedTextures(resolved_area)) {
+            texture_cache.DaoWriteResolvedTextures(resolved_area);
+          }
           written_address_out = resolve_info.copy_dest_extent_start;
           written_length_out = resolve_info.copy_dest_extent_length;
           if (written_scaled_out) {
@@ -1583,6 +1623,24 @@ bool VulkanRenderTargetCache::Update(
           is_rasterization_done, normalized_depth_control,
           normalized_color_mask, vertex_shader, window_offset_tiles)) {
     return false;
+  }
+
+  // DAO_GPU_FRAME_TRACE: the ownership transfers this draw needs, before its
+  // FT draw line.
+  if (dao_trace::Active()) {
+    const std::vector<Transfer>* transfers = last_update_transfers();
+    RenderTarget* const* targets = last_update_accumulated_render_targets();
+    for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+      for (const Transfer& transfer : transfers[i]) {
+        dao_trace::Emit(fmt::format(
+            "FT transfer rt {} {} base {} tiles {}..{} from {} base {}", i,
+            targets[i] ? targets[i]->key().GetFormatName() : "?",
+            targets[i] ? uint32_t(targets[i]->key().base_tiles) : 0,
+            transfer.start_tiles, transfer.end_tiles,
+            transfer.source ? transfer.source->key().GetFormatName() : "?",
+            transfer.source ? uint32_t(transfer.source->key().base_tiles) : 0));
+      }
+    }
   }
 
   auto rb_surface_info = register_file().Get<reg::RB_SURFACE_INFO>();

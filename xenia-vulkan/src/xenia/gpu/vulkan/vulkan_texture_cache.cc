@@ -484,6 +484,8 @@ VulkanTextureCache::~VulkanTextureCache() {
   // Textures memory is allocated using the Vulkan Memory Allocator, destroy all
   // textures before destroying VMA.
   DestroyAllTextures(true);
+  // DAO: after the textures, which free their storage descriptor sets.
+  DaoShutdownResolveTextures();
 
   // Clean up sparse scaled resolve resources (heaps and sparse buffers)
   ShutdownSparseScaledResolve();
@@ -1155,6 +1157,11 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
   if (key.scaled_resolve && key.mip_max_level > 0) {
     image_create_info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
   }
+  // DAO: resolves may write into it directly (DaoWriteResolvedTextures).
+  const bool dao_resolve_writable = DaoIsResolveWritable(key);
+  if (dao_resolve_writable) {
+    image_create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+  }
   image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   image_create_info.queueFamilyIndexCount = 0;
   image_create_info.pQueueFamilyIndices = nullptr;
@@ -1182,8 +1189,11 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
     return nullptr;
   }
 
-  return std::unique_ptr<Texture>(
-      new VulkanTexture(*this, key, image, allocation));
+  auto texture = std::make_unique<VulkanTexture>(*this, key, image, allocation);
+  if (dao_resolve_writable) {
+    texture->DaoSetResolveWritable();
+  }
+  return texture;
 }
 
 bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
@@ -1961,6 +1971,14 @@ VulkanTextureCache::VulkanTexture::~VulkanTexture() {
   }
   if (image_view_3d_as_2d_signed_ != VK_NULL_HANDLE) {
     dfn.vkDestroyImageView(device, image_view_3d_as_2d_signed_, nullptr);
+  }
+  // DAO: the storage view for resolves.
+  if (dao_resolve_view_ != VK_NULL_HANDLE) {
+    dfn.vkDestroyImageView(device, dao_resolve_view_, nullptr);
+  }
+  if (dao_resolve_descriptor_index_ != SIZE_MAX) {
+    vulkan_texture_cache.dao_resolve_dest_pool_->Free(
+        dao_resolve_descriptor_index_);
   }
   // texture_3d_as_2d_ is a unique_ptr and will destroy its image/allocation.
   vmaDestroyImage(vulkan_texture_cache.vma_allocator_, image_, allocation_);
@@ -3156,6 +3174,9 @@ bool VulkanTextureCache::Initialize() {
     return false;
   }
 
+  // DAO: resolves written straight into textures (dao_resolve_to_textures).
+  DaoInitializeResolveTextures();
+
   return true;
 }
 
@@ -3202,6 +3223,11 @@ void VulkanTextureCache::GetTextureUsageMasks(VulkanTexture::Usage usage,
       stage_mask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
       access_mask = VK_ACCESS_SHADER_READ_BIT;
       layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      break;
+    case VulkanTexture::Usage::kDaoResolveWrite:
+      stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+      access_mask = VK_ACCESS_SHADER_WRITE_BIT;
+      layout = VK_IMAGE_LAYOUT_GENERAL;
       break;
   }
 }

@@ -134,16 +134,21 @@ file(GLOB _shader_sources CONFIGURE_DEPENDS
     ${XE_SRC}/gpu/shaders/*.xesl ${XE_SRC}/gpu/shaders/*.xesli ${XE_SRC}/gpu/shaders/*.glsl
     ${XE_SRC}/ui/shaders/*.xesl ${XE_SRC}/ui/shaders/*.xesli
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/ui/shaders/*.xesl
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/ui/shaders/*.xesli)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/ui/shaders/*.xesli
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/gpu/shaders/*.xesl
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/gpu/shaders/*.glsl)
 set(_shader_stamp ${CMAKE_CURRENT_BINARY_DIR}/spirv_shaders.stamp)
 add_custom_command(
     OUTPUT ${_shader_stamp}
     COMMAND ${Python3_EXECUTABLE} ${_shader_script} --tools ${DAO_SHADER_TOOLS}
         --include ${XE_SRC}/ui/shaders --include ${XE_CANARY}/src/xenia/ui/shaders
+        --include ${XE_SRC}/gpu/shaders
         ${XE_SRC}/gpu/shaders ${XV_GEN}/xenia/gpu/shaders/bytecode/vulkan_spirv
         ${XE_SRC}/ui/shaders ${XV_GEN}/xenia/ui/shaders/bytecode/vulkan_spirv
-        # DAO's own (the pre-rotated output for Android):
+        # DAO's own (the pre-rotated output for Android, the resolves into
+        # textures):
         ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/ui/shaders ${XV_GEN}/xenia/ui/shaders/bytecode/vulkan_spirv
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/xenia/gpu/shaders ${XV_GEN}/xenia/gpu/shaders/bytecode/vulkan_spirv
     COMMAND ${CMAKE_COMMAND} -E touch ${_shader_stamp}
     DEPENDS ${_shader_sources} ${_shader_script}
     COMMENT "Compiling Xenia's shaders to SPIR-V"

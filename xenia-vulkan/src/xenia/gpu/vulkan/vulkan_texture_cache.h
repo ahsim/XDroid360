@@ -19,6 +19,7 @@
 #include "xenia/gpu/texture_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
+#include "xenia/ui/vulkan/single_layout_descriptor_set_pool.h"
 #include "xenia/ui/vulkan/vulkan_mem_alloc.h"
 
 namespace xe {
@@ -208,6 +209,33 @@ class VulkanTextureCache final : public TextureCache {
     return nullptr;
   }
 
+  // DAO: an area a resolve copied straight from a host render target, written
+  // into the textures of the resolved memory instead of untiling them at their
+  // next use (dao_resolve_to_textures, dao_vulkan_texture_cache.cc; the render
+  // target cache's part is VulkanRenderTargetCache::DaoGetResolvedArea).
+  struct DaoResolvedArea {
+    // The render target's transfer source descriptor set (one sampled image).
+    VkDescriptorSet source;
+    uint32_t source_x;
+    uint32_t source_y;
+    uint32_t dest_base;
+    uint32_t dest_pitch_div_32;
+    uint32_t dest_x;
+    uint32_t dest_y;
+    uint32_t width;
+    uint32_t height;
+    bool swap_red_blue;
+    xenos::Endian endian;
+  };
+  // Keeps the textures the last MarkRangeAsResolved (collecting them)
+  // invalidated that can take the area directly, and returns whether there are
+  // any.
+  bool DaoPrepareResolvedTextures(const DaoResolvedArea& area);
+  // Writes the area into the textures kept by DaoPrepareResolvedTextures, and
+  // marks them up to date. The source render target must be readable by
+  // compute shaders.
+  void DaoWriteResolvedTextures(const DaoResolvedArea& area);
+
  protected:
   bool IsScaledResolveSupportedForFormat(TextureKey key) const override;
   bool IsSignedVersionSeparateForFormat(TextureKey key) const override;
@@ -271,6 +299,8 @@ class VulkanTextureCache final : public TextureCache {
       kTransferDestination,
       kGuestShaderSampled,
       kSwapSampled,
+      // DAO: a resolve writing into it (DaoWriteResolvedTextures).
+      kDaoResolveWrite,
     };
 
     // Takes ownership of the image and its memory.
@@ -295,6 +325,13 @@ class VulkanTextureCache final : public TextureCache {
     // For 3D textures sampled as 2D - creates a 2D copy of slice 0.
     VkImageView GetOrCreate3DAs2DImageView(bool is_signed,
                                            uint32_t host_swizzle);
+
+    // DAO: whether the image is a storage image resolves can write into, and
+    // the descriptor set of its storage view (created on first use), or
+    // VK_NULL_HANDLE if failed.
+    bool dao_resolve_writable() const { return dao_resolve_writable_; }
+    void DaoSetResolveWritable() { dao_resolve_writable_ = true; }
+    VkDescriptorSet DaoGetResolveDescriptorSet(VkFormat format);
 
    private:
     union ViewKey {
@@ -362,6 +399,11 @@ class VulkanTextureCache final : public TextureCache {
     std::unique_ptr<VulkanTexture> texture_3d_as_2d_;
     VkImageView image_view_3d_as_2d_unsigned_ = VK_NULL_HANDLE;
     VkImageView image_view_3d_as_2d_signed_ = VK_NULL_HANDLE;
+
+    // DAO: see DaoGetResolveDescriptorSet.
+    bool dao_resolve_writable_ = false;
+    VkImageView dao_resolve_view_ = VK_NULL_HANDLE;
+    size_t dao_resolve_descriptor_index_ = SIZE_MAX;
   };
 
   struct VulkanTextureBinding {
@@ -416,6 +458,21 @@ class VulkanTextureCache final : public TextureCache {
                             VkAccessFlags& access_mask, VkImageLayout& layout);
 
   xenos::ClampMode NormalizeClampMode(xenos::ClampMode clamp_mode) const;
+
+  // DAO: the pipeline of DaoWriteResolvedTextures, with
+  // dao_resolve_to_textures (dao_vulkan_texture_cache.cc).
+  void DaoInitializeResolveTextures();
+  void DaoShutdownResolveTextures();
+  // Whether a texture is created as a storage image for resolves to write.
+  bool DaoIsResolveWritable(const TextureKey& key) const;
+  // Set 0 - the same layout as the render target cache's one sampled image,
+  // set 1 - the destination storage image.
+  VkDescriptorSetLayout dao_resolve_source_layout_ = VK_NULL_HANDLE;
+  VkDescriptorSetLayout dao_resolve_dest_layout_ = VK_NULL_HANDLE;
+  std::unique_ptr<ui::vulkan::SingleLayoutDescriptorSetPool>
+      dao_resolve_dest_pool_;
+  VkPipelineLayout dao_resolve_pipeline_layout_ = VK_NULL_HANDLE;
+  VkPipeline dao_resolve_pipeline_ = VK_NULL_HANDLE;
 
   // Sparse scaled resolve helper functions
   bool InitializeSparseScaledResolve();

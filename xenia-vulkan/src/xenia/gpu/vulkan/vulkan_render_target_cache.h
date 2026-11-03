@@ -916,6 +916,25 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
                          uint32_t dump_rows, uint32_t dump_pitch,
                          bool native_layout);
 
+  // DAO: plain resolves copied straight from the render target, and the area
+  // they write for the textures of the resolved memory, with
+  // dao_resolve_to_textures (dao_vulkan_render_target_cache.cc).
+  void DaoInitializeDirectResolve();
+  void DaoShutdownDirectResolve();
+  // The render target a resolve can be copied straight from (dump_rectangles_
+  // must be gathered for it), or nullptr; the area for
+  // VulkanTextureCache::DaoPrepareResolvedTextures.
+  VulkanRenderTarget* DaoGetResolvedArea(
+      const draw_util::ResolveInfo& resolve_info,
+      draw_util::ResolveCopyShaderIndex copy_shader, bool copy_dest_scaled,
+      uint32_t dump_base, uint32_t dump_row_length_used, uint32_t dump_rows,
+      uint32_t dump_pitch,
+      VulkanTextureCache::DaoResolvedArea& area_out) const;
+  // Set 0 - the source render target's transfer descriptor set, set 1 - the
+  // destination; the resolve copy constants.
+  VkPipelineLayout dao_resolve_direct_pipeline_layout_ = VK_NULL_HANDLE;
+  VkPipeline dao_resolve_direct_pipeline_ = VK_NULL_HANDLE;
+
   bool gamma_render_target_as_unorm16_ = false;
 
   bool depth_unorm24_vulkan_format_supported_ = false;

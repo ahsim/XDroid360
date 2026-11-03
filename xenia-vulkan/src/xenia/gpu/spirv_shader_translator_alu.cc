@@ -15,9 +15,19 @@
 
 #include "third_party/glslang/SPIRV/GLSL.std.450.h"
 #include "xenia/base/assert.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/math.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/spirv_compatibility.h"
+
+// DAO: renderer plan stage 1. Off keeps Direct3D 9's "0 * anything = 0" exactly,
+// two extra operations per multiplication; on trusts the host's multiplication
+// (0 * Inf and 0 * NaN become NaN).
+DEFINE_bool(dao_relaxed_zero_multiply, false,
+            "DAO: skip the check that makes 0 * anything = 0 in translated "
+            "shaders. Faster, but a shader relying on it with an infinity or "
+            "a NaN gets a NaN.",
+            "GPU");
 
 namespace xe {
 namespace gpu {
@@ -29,6 +39,9 @@ spv::Id SpirvShaderTranslator::ZeroIfAnyOperandIsZero(spv::Id value,
   assert_true(builder_->getNumComponents(value) == 1);
   assert_true(builder_->getNumComponents(operand_0_abs) == 1);
   assert_true(builder_->getNumComponents(operand_1_abs) == 1);
+  if (cvars::dao_relaxed_zero_multiply) {
+    return value;
+  }
   return builder_->createTriOp(
       spv::OpSelect, type_float_,
       builder_->createBinOp(spv::OpFOrdEqual, type_bool_,

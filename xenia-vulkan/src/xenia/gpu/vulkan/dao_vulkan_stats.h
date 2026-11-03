@@ -1,7 +1,8 @@
 // DAO: per-frame counters of the Vulkan backend's memory traffic and render
 // work, for choosing what to optimize on the phone's GPU (resolves, ownership
 // transfers, texture loads, uploads into the shared memory buffer, readbacks,
-// render passes, submissions, and the CPU's time waiting for the GPU).
+// render passes, submissions, the CPU's time waiting for the GPU, and when the
+// depth test of pixel-shaded draws runs: before the shader or after it).
 // DAO_GPU_STATS=1 enables them; every 2 seconds the averages per frame go to
 // the sink (the runtime's dao.log; Xenia's own log otherwise). No GPU
 // timestamps: on Turnip they stall the GPU. All counting happens on the
@@ -35,6 +36,15 @@ struct Counters {
   uint64_t readback_bytes = 0;
   uint64_t submissions = 0;
   uint64_t cpu_wait_us = 0;
+  // Draws with a pixel shader and the depth test on: early (EarlyFragmentTests)
+  // or late, by the first reason that keeps the test after the shader.
+  uint64_t z_early = 0;
+  uint64_t z_late_shader = 0;  // The ucode kills, writes depth or memexports.
+  uint64_t z_late_alpha = 0;   // Alpha test or alpha to coverage.
+  uint64_t z_late_offset = 0;  // Polygon offset applied in the shader.
+  uint64_t z_late_float24 = 0;  // 20e4 depth converted in the shader.
+  uint64_t z_late_query = 0;   // Occlusion query counting in the shader.
+  uint64_t z_late_write = 0;   // Late ones that also write depth.
 };
 
 inline bool Enabled() {
@@ -105,14 +115,20 @@ inline void OnSwap(uint32_t draws_issued) {
       "{:.0f}, resolves {:.1f} ({:.2f} MP, {:.1f} with clear), transfers "
       "{:.1f}, texture loads {:.1f} ({:.2f} MB, {:.1f} of GPU-written "
       "memory), uploads {:.1f} ({:.2f} MB), readbacks {:.2f} ({:.2f} MB), "
-      "submissions {:.1f}, CPU waited for the GPU {:.2f} ms",
+      "submissions {:.1f}, CPU waited for the GPU {:.2f} ms, depth-tested "
+      "draws: early {:.0f}, late {:.0f} (shader {:.0f}, alpha {:.0f}, "
+      "offset {:.0f}, float24 {:.0f}, query {:.0f}; {:.0f} writing depth)",
       c.frames, seconds, c.draws / f, c.passes / f, c.resolves / f,
       c.resolve_pixels / f / 1e6, c.resolve_clears / f, c.transfers / f,
       c.texture_loads / f, c.texture_load_bytes / f / 1048576.0,
       c.texture_loads_gpu_written / f, c.uploads / f,
       c.upload_bytes / f / 1048576.0, c.readbacks / f,
       c.readback_bytes / f / 1048576.0, c.submissions / f,
-      c.cpu_wait_us / f / 1000.0);
+      c.cpu_wait_us / f / 1000.0, c.z_early / f,
+      (c.z_late_shader + c.z_late_alpha + c.z_late_offset + c.z_late_float24 +
+       c.z_late_query) / f,
+      c.z_late_shader / f, c.z_late_alpha / f, c.z_late_offset / f,
+      c.z_late_float24 / f, c.z_late_query / f, c.z_late_write / f);
   if (ReportSink()) {
     ReportSink()(line.c_str());
   } else {

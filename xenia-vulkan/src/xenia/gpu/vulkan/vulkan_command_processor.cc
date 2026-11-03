@@ -1467,6 +1467,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
   // DAO: per-frame draw statistics and DAO_GPU_FRAME_TRACE (as D3D12), and
   // DAO_GPU_STATS (dao_vulkan_stats.h; before OnSwap resets the draw count).
   dao_stats::OnSwap(dao_trace::CurrentStats().issued);
+  dao_trace::Sink() = dao_stats::ReportSink();
   dao_trace::OnSwap(frontbuffer_ptr);
 
   ui::Presenter* presenter = graphics_system_->presenter();
@@ -2673,6 +2674,36 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             samplers_overflowed_count);
     assert_true(sampler_overflow_await_submission <= GetCurrentSubmission());
     CheckSubmissionCompletionAndDeviceLoss(sampler_overflow_await_submission);
+  }
+
+  // DAO: DAO_GPU_STATS - when the depth test of this draw runs.
+  if (dao_stats::Enabled() && pixel_shader &&
+      normalized_depth_control.z_enable) {
+    using DepthStencilMode =
+        SpirvShaderTranslator::Modification::DepthStencilMode;
+    dao_stats::Counters& stats = dao_stats::Current();
+    DepthStencilMode mode = pixel_shader_modification.pixel.depth_stencil_mode;
+    if (mode == DepthStencilMode::kEarlyHint) {
+      ++stats.z_early;
+    } else {
+      if (zpd_hybrid) {
+        ++stats.z_late_query;
+      } else if (!pixel_shader->implicit_early_z_write_allowed()) {
+        ++stats.z_late_shader;
+      } else if (mode == DepthStencilMode::kPolygonOffset ||
+                 mode == DepthStencilMode::kFloat24TruncatingPolygonOffset ||
+                 mode == DepthStencilMode::kFloat24RoundingPolygonOffset) {
+        ++stats.z_late_offset;
+      } else if (mode == DepthStencilMode::kFloat24Truncating ||
+                 mode == DepthStencilMode::kFloat24Rounding) {
+        ++stats.z_late_float24;
+      } else {
+        ++stats.z_late_alpha;
+      }
+      if (normalized_depth_control.z_write_enable) {
+        ++stats.z_late_write;
+      }
+    }
   }
 
   // Put the window offset into the EDRAM bases when possible.

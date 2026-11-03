@@ -1,0 +1,4 @@
+// DAO: the direct resolve copy (from the k_8_8_8_8 render target, not its EDRAM
+// dump) for Vulkan. Named without the dao_ prefix, which the SPIR-V build skips
+// as Direct3D 12 only; the shader itself is shared with Direct3D 12.
+#include "dao_resolve_direct.xesli"
