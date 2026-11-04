@@ -5,8 +5,9 @@ built game library, or checks one (format 2, or an older format 1 .daopkg).
     make_package.py check <package.x360pkg>
 
 The package holds the game's translated code and data: it is the player's own copy, never to be
-shared. This is the packaging step of the PC tool; for now the library comes from the app's dev
-build (android/app/build/intermediates/cxx/.../libgame.so).
+shared. A development tool: players build the game on the phone (the launcher's BuildService);
+packages are for testing a library built here (android/app/build/intermediates/cxx/.../libgame.so),
+put on the phone with adb.
 """
 import argparse
 import datetime
@@ -51,11 +52,7 @@ def git_commit(path):
 
 
 def build_commit(name, path):
-    """The commit the package is built from: the PC tool's release zip has no .git, so
-    scripts/build_tool_release.py records both in BUILD.json; a checkout asks git."""
-    stamp = ROOT / "BUILD.json"
-    if stamp.is_file():
-        return json.loads(stamp.read_text(encoding="utf-8")).get(name, "unknown")
+    """The commit the package is built from."""
     return git_commit(path)
 
 

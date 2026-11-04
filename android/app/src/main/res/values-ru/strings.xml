@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="launcher_empty">Игр пока нет.\n\nДобавьте свою игру для Xbox 360 кнопкой ниже: образ диска Dragon Age: Origins или папку State of Decay. Телефон соберёт из неё игру.</string>
-    <string name="launcher_add_image">%1$s: образ диска</string>
-    <string name="launcher_add_folder">%1$s: папка игры</string>
+    <string name="launcher_empty">Игр пока нет.\n\nДобавьте свою игру для Xbox 360 кнопкой ниже: образ диска Dragon Age: Origins или State of Decay в .zip или папкой. Телефон соберёт из неё игру.</string>
+    <string name="launcher_add_folder">Папка игры (из памяти консоли)</string>
+    <string name="launcher_add_file">Образ диска (.iso) или .zip</string>
     <string name="launcher_add">Добавить игру</string>
 
     <string name="instance_play">Играть</string>
@@ -38,7 +38,7 @@
     <string name="driver_not_found">В этом файле нет драйвера .so.</string>
     <string name="launcher_empty_title">Игры пока нет</string>
     <string name="launcher_how">Как добавить игру</string>
-    <string name="launcher_how_text">1. Скопируйте свою игру на телефон: образ диска (.iso) Dragon Age: Origins (английское/итальянское/испанское издание или диск 1 Ultimate Edition) или папку State of Decay (584111E8) из памяти консоли.\n\n2. Нажмите + и выберите её. Лаунчер проверит игру и соберёт её на телефоне: около 5 минут плюс копирование файлов игры. Лаунчер можно свернуть.\n\n3. Нажмите «Играть».\n\nИгра — ваша личная копия: в приложении нет ничего из неё.</string>
+    <string name="launcher_how_text">1. Скопируйте свою игру на телефон: образ диска (.iso или .zip с ним) Dragon Age: Origins (английское/итальянское/испанское издание или диск 1 Ultimate Edition) или папку State of Decay (584111E8) из памяти консоли, в .zip или как есть.\n\n2. Нажмите + и выберите её. Лаунчер проверит игру и соберёт её на телефоне: около 6 минут плюс копирование файлов игры. Лаунчер можно свернуть.\n\n3. Нажмите «Играть».\n\nИгра — ваша личная копия: в приложении нет ничего из неё.</string>
     <string name="nav_install_driver">Установить драйвер</string>
     <string name="nav_install_saves">Установить сохранения (.zip)</string>
     <string name="nav_pad_editor">Раскладка экранного геймпада</string>
@@ -150,7 +150,7 @@
     <string name="build_running">Собирается…</string>
     <string name="build_error_source_unreadable">Файл или папку не прочитать. Выберите заново.</string>
     <string name="build_error_source_not_seekable">Это хранилище отдаёт файл только потоком (облако?): сначала скопируйте образ на телефон.</string>
-    <string name="build_error_unknown_title">Эту игру лаунчер собрать не может (выберите образ диска Dragon Age: Origins или папку State of Decay).</string>
+    <string name="build_error_unknown_title">Эту игру лаунчер собрать не может (выберите образ диска Dragon Age: Origins или State of Decay в .zip или папкой).</string>
     <string name="build_error_missing_content">В папке нет пакета самой игры (000D0000).</string>
     <string name="build_error_unsupported_game_version">Эта версия игры не та, под которую сделан лаунчер.</string>
     <string name="build_error_not_enough_space">На телефоне не хватает места.</string>

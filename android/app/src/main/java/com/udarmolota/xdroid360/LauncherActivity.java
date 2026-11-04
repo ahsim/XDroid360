@@ -232,7 +232,7 @@ public class LauncherActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
-    /** Which pick the games this launcher can build need: one picker, or a choice of game first. */
+    /** Which pick the games this launcher can build need: the file picker, or a choice of file or folder. */
     private void addGame() {
         List<Recipe> games = Toolchain.profiles(this);
         if (games.isEmpty() || !Toolchain.present(this)) {
@@ -240,29 +240,20 @@ public class LauncherActivity extends AppCompatActivity {
                     .setPositiveButton(android.R.string.ok, null).show();
             return;
         }
-        boolean files = false, trees = false;
-        for (Recipe r : games) {
-            if ("tree".equals(r.pick())) trees = true;
-            else files = true;
-        }
+        // Any game comes as a file (a disc image, or either game in a .zip); a game whose
+        // recipe picks a folder can come as that folder too (a console's storage).
+        boolean trees = false;
+        for (Recipe r : games) trees |= "tree".equals(r.pick());
         if (!trees) {
             pickImage.launch(new String[] { "*/*" });
             return;
         }
-        if (!files) {
-            pickTree.launch(null);
-            return;
-        }
-        String[] labels = new String[games.size()];
-        for (int i = 0; i < labels.length; i++) {
-            Recipe r = games.get(i);
-            labels[i] = getString("tree".equals(r.pick()) ? R.string.launcher_add_folder : R.string.launcher_add_image, r.title());
-        }
         new MaterialAlertDialogBuilder(this).setTitle(R.string.launcher_add)
-                .setItems(labels, (d, which) -> {
-                    if ("tree".equals(games.get(which).pick())) pickTree.launch(null);
-                    else pickImage.launch(new String[] { "*/*" });
-                })
+                .setItems(new String[] { getString(R.string.launcher_add_file), getString(R.string.launcher_add_folder) },
+                        (d, which) -> {
+                            if (which == 1) pickTree.launch(null);
+                            else pickImage.launch(new String[] { "*/*" });
+                        })
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
     }

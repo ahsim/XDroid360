@@ -2,9 +2,9 @@
 <resources>
     <string name="app_name">XDroid360</string>
 
-    <string name="launcher_empty">No game yet.\n\nAdd your own Xbox 360 game with the button below: the disc image of Dragon Age: Origins, or the folder of State of Decay. The phone builds the game from it.</string>
-    <string name="launcher_add_image">%1$s: the disc image</string>
-    <string name="launcher_add_folder">%1$s: the game folder</string>
+    <string name="launcher_empty">No game yet.\n\nAdd your own Xbox 360 game with the button below: the disc image of Dragon Age: Origins, or State of Decay, as a .zip or a folder. The phone builds the game from it.</string>
+    <string name="launcher_add_folder">Game folder (from a console\'s storage)</string>
+    <string name="launcher_add_file">Disc image (.iso) or .zip</string>
     <string name="launcher_add">Add game</string>
 
     <string name="instance_play">Play</string>
@@ -40,7 +40,7 @@
     <string name="driver_not_found">No .so driver in that file.</string>
     <string name="launcher_empty_title">No game yet</string>
     <string name="launcher_how">How to add a game</string>
-    <string name="launcher_how_text">1. Copy your own game to this phone: the disc image (.iso) of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition), or the State of Decay folder (584111E8) from your console\'s storage.\n\n2. Tap + and pick it. The launcher checks the game and builds it on the phone: about 5 minutes, plus copying the game files. You can leave the launcher meanwhile.\n\n3. Tap Play.\n\nThe game is your own copy: nothing of it comes with this app.</string>
+    <string name="launcher_how_text">1. Copy your own game to this phone: the disc image (.iso, or a .zip with it) of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition), or State of Decay\'s folder (584111E8) from your console\'s storage, as a .zip or as the folder.\n\n2. Tap + and pick it. The launcher checks the game and builds it on the phone: about 6 minutes, plus copying the game files. You can leave the launcher meanwhile.\n\n3. Tap Play.\n\nThe game is your own copy: nothing of it comes with this app.</string>
     <string name="nav_install_driver">Install a driver</string>
     <string name="nav_install_saves">Install saves (.zip)</string>
     <string name="nav_pad_editor">On-screen gamepad layout</string>
@@ -153,7 +153,7 @@
     <string name="build_running">Building…</string>
     <string name="build_error_source_unreadable">The file or folder can\'t be read. Pick it again.</string>
     <string name="build_error_source_not_seekable">This storage gives the file only as a stream (a cloud drive?): copy the image to the phone first.</string>
-    <string name="build_error_unknown_title">This isn\'t a game this launcher can build (pick the disc image of Dragon Age: Origins, or the folder of State of Decay).</string>
+    <string name="build_error_unknown_title">This isn\'t a game this launcher can build (pick the disc image of Dragon Age: Origins, or State of Decay as a .zip or a folder).</string>
     <string name="build_error_missing_content">The folder lacks the game package itself (000D0000).</string>
     <string name="build_error_unsupported_game_version">This is a version of the game the launcher isn\'t made for.</string>
     <string name="build_error_not_enough_space">Not enough free space on the phone.</string>

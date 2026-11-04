@@ -129,7 +129,8 @@ public class BuildActivity extends AppCompatActivity {
         Recipe recipe = source.recipe;
         progress.setVisibility(View.GONE);
         title.setText(recipe.title());
-        long gameNeed = Math.max(recipe.spaceMb("game_mb") * MB, source.gameBytes);
+        // A zipped game is inflated next to its files first (the disc image, or a package at a time).
+        long gameNeed = Math.max(recipe.spaceMb("game_mb") * MB, source.gameBytes) + source.scratchBytes;
         long internalNeed = (recipe.spaceMb("work_mb") + recipe.spaceMb("install_mb") + TOOLCHAIN_MB) * MB;
         long gameFree = free(Instance.instancesRoot(this)), internalFree = free(getFilesDir());
         details.setText(getString(R.string.build_details, source.titleId,

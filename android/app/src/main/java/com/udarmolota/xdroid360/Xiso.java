@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * An Xbox 360 disc image (XDVDFS), read through a seekable channel: the port of the PC tool's
+ * An Xbox 360 disc image (XDVDFS), read through a seekable channel: the port of DAORecomp's
  * reader (recomp/scripts/xiso.py). The image is the player's file, so its directory tables are
  * read with limits and its names are checked before they become paths.
  */

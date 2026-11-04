@@ -137,47 +137,119 @@ final class RecipeRunner {
         }
     }
 
+    /**
+     * The disc's files into ${GAME}/game. A zipped source is inflated into ${GAME}/.source first
+     * (the extractors need a seekable file): DAO's disc image whole, SoD's packages one at a
+     * time (inflate, extract, delete), so the scratch copy needs at most its largest package.
+     * The scratch folder goes when the step is done.
+     */
     private void extract(JSONObject step, double weight) throws Recipe.Failure, IOException {
         File to = new File(vars.text(step.optString("to", "${GAME}")));
+        File scratch = new File(to, ".source");
+        GameSource source = GameSource.detect(context, job.source, job.pick);
         if ("xiso".equals(step.optString("format"))) {
-            try (ParcelFileDescriptor pfd = GameSource.open(context, job.source);
-                 FileInputStream in = new FileInputStream(pfd.getFileDescriptor());
-                 FileChannel channel = in.getChannel()) {
+            if (source.zipped) extractZippedIso(source, to, scratch, weight);
+            else extractIso(source, to, weight);
+        } else if ("stfs".equals(step.optString("format"))) {
+            extractPackages(step, source, to, scratch, weight);
+        } else {
+            throw new Recipe.Failure("extract_failed", "unknown format " + step.optString("format"));
+        }
+        Instance.deleteTree(scratch);
+    }
+
+    private void extractIso(GameSource source, File to, double weight) throws Recipe.Failure, IOException {
+        try (ParcelFileDescriptor pfd = GameSource.open(context, source.uri);
+             FileInputStream in = new FileInputStream(pfd.getFileDescriptor());
+             FileChannel channel = in.getChannel()) {
+            Xiso iso = new Xiso(channel);
+            // Both games keep the disc's files in ${GAME}/game (the format's layout).
+            iso.extract(new File(to, "game"), (done, total) -> {
+                report(total > 0 ? weight * done / total : 0, mb(done) + " / " + mb(total));
+                return !cancelled.get();
+            });
+        }
+    }
+
+    private void extractZippedIso(GameSource source, File to, File scratch, double weight)
+            throws Recipe.Failure, IOException {
+        File image = new File(scratch, "game.iso");
+        try (ZipSource zip = ZipSource.open(context, source.uri)) {
+            java.util.zip.ZipEntry e = zip.entry(source.zipIso);
+            if (e == null) throw new Recipe.Failure("source_unreadable", "no " + source.zipIso + " in the zip any more");
+            long all = Math.max(1, e.getSize()) * 2; // inflating, then extracting about as much
+            zip.inflate(e, image, (done, total) -> {
+                report(weight * done / all, mb(done) + " / " + mb(e.getSize()));
+                return !cancelled.get();
+            });
+            try (FileInputStream in = new FileInputStream(image); FileChannel channel = in.getChannel()) {
                 Xiso iso = new Xiso(channel);
-                // Both games keep the disc's files in ${GAME}/game (the format's layout).
+                // Before 6 GB of extracting: is it the version the profile is made for?
+                Xiso.Entry xex = iso.find("default.xex");
+                JSONArray accepted = GameSource.xexHashes(recipe);
+                if (xex == null) throw new Recipe.Failure("unknown_title", "the disc image has no default.xex");
+                if (accepted != null && !contains(accepted, iso.sha256(xex))) {
+                    throw new Recipe.Failure("unsupported_game_version", "default.xex isn't one the profile accepts");
+                }
                 iso.extract(new File(to, "game"), (done, total) -> {
-                    report(total > 0 ? weight * done / total : 0, mb(done) + " / " + mb(total));
+                    report(weight * (e.getSize() + (double) done / Math.max(1, total) * e.getSize()) / all,
+                            mb(done) + " / " + mb(total));
                     return !cancelled.get();
                 });
             }
-            return;
         }
-        if (!"stfs".equals(step.optString("format"))) throw new Recipe.Failure("extract_failed", "unknown format");
+    }
+
+    private void extractPackages(JSONObject step, GameSource source, File to, File scratch, double weight)
+            throws Recipe.Failure, IOException {
         if (!StfsExtractor.available()) throw new Recipe.Failure("extract_failed", "no STFS extractor in this launcher");
-        GameSource source = GameSource.detect(context, job.source, job.pick);
         List<GameSource.Package> packages = new ArrayList<>(source.packages);
-        packages.sort((a, b) -> a.uri.toString().compareTo(b.uri.toString()));
+        packages.sort((a, b) -> a.key().compareTo(b.key()));
         long total = 0, before = 0;
         for (GameSource.Package p : packages) total += p.size;
-        for (int n = 0; n < packages.size(); n++) {
-            GameSource.Package p = packages.get(n);
-            File done = new File(job.keptMarkers(context), step.optString("id") + "." + n);
-            if (!done.isFile()) {
-                final long base = before, all = total;
-                try (ParcelFileDescriptor pfd = GameSource.open(context, p.uri)) {
-                    int code = StfsExtractor.nativeExtract(pfd.getFd(), to.getPath(), (d, t) -> {
-                        report(all > 0 ? weight * (base + d) / all : 0, mb(base + d) + " / " + mb(all));
-                        return !cancelled.get();
-                    });
-                    if (code != 0) {
-                        String c = code < StfsExtractor.ERRORS.length ? StfsExtractor.ERRORS[code] : "extract_failed";
-                        throw new Recipe.Failure(c, "STFS package " + p.uri.getLastPathSegment() + ": code " + code);
+        // A zipped package is inflated, then extracted: twice its size in progress.
+        final long all = Math.max(1, total) * (source.zipped ? 2 : 1);
+        try (ZipSource zip = source.zipped ? ZipSource.open(context, source.uri) : null) {
+            for (int n = 0; n < packages.size(); n++) {
+                GameSource.Package p = packages.get(n);
+                File done = new File(job.keptMarkers(context), step.optString("id") + "." + n);
+                if (!done.isFile()) {
+                    final long base = before * (source.zipped ? 2 : 1);
+                    File file = null;
+                    if (zip != null) {
+                        java.util.zip.ZipEntry e = zip.entry(p.entry);
+                        if (e == null) throw new Recipe.Failure("source_unreadable", "no " + p.entry + " in the zip any more");
+                        file = new File(scratch, n + ".stfs");
+                        zip.inflate(e, file, (d, t) -> {
+                            report(weight * (base + d) / all, mb(base + d) + " / " + mb(all));
+                            return !cancelled.get();
+                        });
                     }
+                    final long extractBase = base + (zip != null ? p.size : 0);
+                    try (ParcelFileDescriptor pfd = file != null
+                            ? ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                            : GameSource.open(context, p.uri)) {
+                        int code = StfsExtractor.nativeExtract(pfd.getFd(), to.getPath(), (d, t) -> {
+                            report(weight * (extractBase + d) / all, mb(extractBase + d) + " / " + mb(all));
+                            return !cancelled.get();
+                        });
+                        if (code != 0) {
+                            String c = code < StfsExtractor.ERRORS.length ? StfsExtractor.ERRORS[code] : "extract_failed";
+                            throw new Recipe.Failure(c, "STFS package " + p.key() + ": code " + code);
+                        }
+                    }
+                    if (file != null) //noinspection ResultOfMethodCallIgnored
+                        file.delete();
+                    touch(done);
                 }
-                touch(done);
+                before += p.size;
             }
-            before += p.size;
         }
+    }
+
+    private static boolean contains(JSONArray hashes, String sha) {
+        for (int i = 0; i < hashes.length(); i++) if (hashes.optString(i).equalsIgnoreCase(sha)) return true;
+        return false;
     }
 
     private void runTool(JSONObject step, double weight) throws Recipe.Failure, IOException {
