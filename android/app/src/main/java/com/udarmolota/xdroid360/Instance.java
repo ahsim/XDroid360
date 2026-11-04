@@ -13,11 +13,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One installed game: a game package imported into the launcher (docs/PACKAGE_FORMAT.md), or
- * the development build's own game (the library inside the APK, the game in the old dao/
- * folder). Its files: {@code root} (shared storage: game/, userdata/, driver/, instance.json)
- * and, for a package, the game library in the app's internal files (code can't be mapped from
- * shared storage).
+ * One installed game: a game built on the phone from the player's disc (BuildService), an
+ * older game package (docs/PACKAGE_FORMAT.md), or the development build's own game (the library
+ * inside the APK, the game in the old dao/ folder). Its files: {@code root} (shared storage:
+ * game/, userdata/, driver/, instance.json) and the game library in the app's internal files
+ * (code can't be mapped from shared storage).
  */
 final class Instance {
     static final String DEV_ID = "dev";
@@ -113,6 +113,8 @@ final class Instance {
 
     String buildLabel() {
         if (isDev()) return "development build (game built into the APK)";
+        JSONObject recipe = manifest.optJSONObject("recipe");
+        if (recipe != null) return "built on this phone, profile " + recipe.optString("version", "?");
         JSONObject build = manifest.optJSONObject("build");
         String commit = build != null ? build.optString("daodroid", "?") : "?";
         if (commit.length() > 8) commit = commit.substring(0, 8);
@@ -231,18 +233,19 @@ final class Instance {
         return out;
     }
 
-    static Instance create(Context context, JSONObject manifest) {
-        String id = "i" + System.currentTimeMillis();
+    /** The instance a build on the phone made (BuildJob id), with the recipe's stamp as its manifest. */
+    static Instance built(Context context, String id, String titleId, String title, JSONObject stamp) {
         Instance i = new Instance(id, new File(instancesRoot(context), id), libraryFor(context, id));
-        i.manifest = manifest;
-        String title = manifest.optString("title"); // format 2; format 1 has none
-        if (title.isEmpty()) {
-            String titleId = i.titleId();
-            title = DAO_TITLE_ID.equals(titleId) ? "Dragon Age: Origins"
-                    : "584111E8".equals(titleId) ? "State of Decay" : "Xbox 360 game " + titleId;
+        i.manifest = new JSONObject();
+        try {
+            i.manifest.put("format", 2);
+            i.manifest.put("title_id", titleId);
+            i.manifest.put("title", title);
+            i.manifest.put("recipe", stamp);
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
         }
-        Object tu = manifest.opt("title_update");
-        i.name = title + (tu instanceof Number ? " (TU" + tu + ")" : "");
+        i.name = title;
         return i;
     }
 

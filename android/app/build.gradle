@@ -16,6 +16,26 @@ if (signingFile.isFile()) {
 }
 def hasSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every { signing.getProperty(it) }
 
+// Building games on the phone: the toolchain (clang, lld and XenonRecomp as jniLibs, kit.zip),
+// made by SD1/toolchain, and the game profiles (games/<id>.zip): SoD's from the toolchain's
+// output, DAO's from scripts/make_dao_profile.py. Override the folder with
+// -Pxdroid360.toolchain=<dir>. Without it the APK can't build games (Toolchain.present).
+def toolchainOut = file(project.findProperty("xdroid360.toolchain") ?: "${rootDir}/../../SD1/toolchain/out")
+def daoProfile = file("${rootDir}/../build/profile/dao.zip")
+def toolchainAssets = layout.buildDirectory.dir("generated/toolchain/assets")
+def copyToolchainAssets = tasks.register("copyToolchainAssets", Sync) {
+    into toolchainAssets
+    from(toolchainOut) { include "kit.zip" }
+    from(file("${toolchainOut}/games")) {
+        include "*.zip"
+        into "games"
+    }
+    from(daoProfile.parentFile) {
+        include daoProfile.name
+        into "games"
+    }
+}
+
 android {
     namespace 'com.udarmolota.xdroid360'
     compileSdk 36
@@ -48,8 +68,8 @@ android {
     }
 
     // Two APKs: "dev" holds the game library built from this PC's translated code (the
-    // development build, never shared); "launcher" holds none (no game code at all) and runs a
-    // game package (dao/libgame.so and the game files) built on the player's PC.
+    // development build, never shared); "launcher" holds none (no game code at all) and builds
+    // each game on the phone from the player's own disc (BuildService).
     signingConfigs {
         if (hasSigning) {
             release {
@@ -108,7 +128,15 @@ android {
 
     packaging {
         jniLibs {
+            // Extracted to nativeLibraryDir: the tools run from there as programs.
             useLegacyPackaging true
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs += file("${toolchainOut}/jniLibs")
+            assets.srcDir(toolchainAssets)
         }
     }
 
@@ -117,6 +145,8 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
+preBuild.dependsOn copyToolchainAssets
 
 dependencies {
     // The launcher's screens (the game itself is SDL's activity, no AndroidX).

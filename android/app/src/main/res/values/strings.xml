@@ -2,14 +2,10 @@
 <resources>
     <string name="app_name">XDroid360</string>
 
-    <string name="launcher_empty">No game yet.\n\nBuild a game package from your own Xbox 360 disc on your PC, copy the .x360pkg file to this phone, and add it with the button below.</string>
+    <string name="launcher_empty">No game yet.\n\nAdd your own Xbox 360 game with the button below: the disc image of Dragon Age: Origins, or the folder of State of Decay. The phone builds the game from it.</string>
+    <string name="launcher_add_image">%1$s: the disc image</string>
+    <string name="launcher_add_folder">%1$s: the game folder</string>
     <string name="launcher_add">Add game</string>
-    <string name="launcher_import_title">Add this game?</string>
-    <string name="launcher_import_message">%1$s\n%2$s\n\nIt takes %3$s on this phone (free: %4$s).\n\nThis package is your own copy of the game: don\'t share it.</string>
-    <string name="launcher_import_go">Add</string>
-    <string name="launcher_importing">Adding the game…</string>
-    <string name="launcher_import_failed">Couldn\'t add the game</string>
-    <string name="launcher_no_space">Not enough free space: the game needs %1$s, %2$s is free.</string>
 
     <string name="instance_play">Play</string>
     <string name="instance_settings">Settings</string>
@@ -44,12 +40,12 @@
     <string name="driver_not_found">No .so driver in that file.</string>
     <string name="launcher_empty_title">No game yet</string>
     <string name="launcher_how">How to add a game</string>
-    <string name="launcher_how_text">1. On your PC, build a game package from your own Xbox 360 disc of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition) with XDroid360\'s PC tool.\n\n2. Copy the .x360pkg file to this phone (a cable, a cloud drive, a messenger).\n\n3. Tap + and pick the file. The launcher checks it and copies the game in.\n\n4. Tap Play.\n\nThe package is your own copy of the game: don\'t share it.</string>
+    <string name="launcher_how_text">1. Copy your own game to this phone: the disc image (.iso) of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition), or the State of Decay folder (584111E8) from your console\'s storage.\n\n2. Tap + and pick it. The launcher checks the game and builds it on the phone: about 5 minutes, plus copying the game files. You can leave the launcher meanwhile.\n\n3. Tap Play.\n\nThe game is your own copy: nothing of it comes with this app.</string>
     <string name="nav_install_driver">Install a driver</string>
     <string name="nav_install_saves">Install saves (.zip)</string>
     <string name="nav_pad_editor">On-screen gamepad layout</string>
     <string name="nav_about">About</string>
-    <string name="about_text">XDroid360: Dragon Age: Origins (Xbox 360) on Android, built on DAORecomp by 96dot, Xenia\'s Vulkan backend and Mesa\'s Turnip. Made with the help of AI.\n\nNo game code or data comes with this app: each player builds their own game package from their own disc.\n\nDragon Age is a trademark of Electronic Arts; this project is not affiliated with EA or BioWare.</string>
+    <string name="about_text">XDroid360: Xbox 360 games on Android, built on DAORecomp by 96dot, Xenia\'s Vulkan backend and Mesa\'s Turnip. Made with the help of AI.\n\nNo game code or data comes with this app: the phone builds each game from the player\'s own disc.\n\nDragon Age is a trademark of Electronic Arts; this project is not affiliated with EA or BioWare.</string>
     <string name="instance_more">More</string>
     <string name="instance_delete_go">Delete</string>
     <string name="saves_installed">Saves installed: %1$d files</string>
@@ -128,4 +124,44 @@
     <string name="check_no_anisotropy">No anisotropic filtering: textures at an angle look blurrier.</string>
     <string name="check_low_ram">%1$s GB of RAM: the game hasn\'t been tried with this little; it may run out of memory.</string>
     <string name="check_page_size">%1$d KB memory pages: the game hasn\'t been tried on such phones yet.</string>
+    <!-- Adding a game: the build on the phone (BuildActivity, BuildService). -->
+    <string name="build_title">Add game</string>
+    <string name="build_reading">Reading the game…</string>
+    <string name="build_cannot">This can\'t be added</string>
+    <string name="build_details">Title %1$s\n\nGame files: %2$s (free: %3$s)\nThe build, on this phone\'s own storage: %4$s (free: %5$s)</string>
+    <string name="build_time">The phone builds the game from your disc: about 5 minutes, then the game files are copied in. You can leave the launcher meanwhile.</string>
+    <string name="build_name_hint">Name</string>
+    <string name="build_start">Build</string>
+    <string name="build_close">Close</string>
+    <string name="build_preparing">Preparing…</string>
+    <string name="build_cancel">Cancel</string>
+    <string name="build_keep_going">Keep building</string>
+    <string name="build_cancel_confirm">Stop the build? The game files copied so far are kept, so Continue picks up from there.</string>
+    <string name="build_retry">Retry</string>
+    <string name="build_continue">Continue</string>
+    <string name="build_delete">Delete</string>
+    <string name="build_delete_confirm">Delete this build and the game files it copied?</string>
+    <string name="build_log">Show log</string>
+    <string name="build_done">Ready to play.</string>
+    <string name="build_done_button">Done</string>
+    <string name="build_cancelled">The build was cancelled.</string>
+    <string name="build_interrupted">The build was interrupted (the app was closed or the phone restarted).</string>
+    <string name="build_busy">Another game is being built: wait for it to finish.</string>
+    <string name="build_no_toolchain">This version of the launcher can\'t build this game: update the launcher.</string>
+    <string name="build_channel">Building games</string>
+    <string name="build_unfinished">Not finished: tap to continue</string>
+    <string name="build_running">Building…</string>
+    <string name="build_error_source_unreadable">The file or folder can\'t be read. Pick it again.</string>
+    <string name="build_error_source_not_seekable">This storage gives the file only as a stream (a cloud drive?): copy the image to the phone first.</string>
+    <string name="build_error_unknown_title">This isn\'t a game this launcher can build (pick the disc image of Dragon Age: Origins, or the folder of State of Decay).</string>
+    <string name="build_error_missing_content">The folder lacks the game package itself (000D0000).</string>
+    <string name="build_error_unsupported_game_version">This is a version of the game the launcher isn\'t made for.</string>
+    <string name="build_error_not_enough_space">Not enough free space on the phone.</string>
+    <string name="build_error_extract_failed">The disc image or package is damaged: the game files couldn\'t be copied.</string>
+    <string name="build_error_tool_failed">A build tool failed. Retry; if it fails again, send the log in a bug report.</string>
+    <string name="build_error_compile_failed">Part of the game code didn\'t compile. Retry; if it fails again, send the log in a bug report.</string>
+    <string name="build_error_profile_mismatch">The translated game code doesn\'t match this launcher\'s runtime.</string>
+    <string name="build_error_link_failed">The game library couldn\'t be put together. Send the log in a bug report.</string>
+    <string name="build_error_abi_mismatch">The built game doesn\'t fit this launcher version.</string>
+    <string name="build_error_cancelled">Cancelled.</string>
 </resources>

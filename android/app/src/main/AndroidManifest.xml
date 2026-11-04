@@ -9,6 +9,11 @@
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Building a game on the phone (BuildService): in the foreground, with the screen off. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- The bug report's "Send by email" lists the mail apps (package visibility). -->
     <queries>
@@ -64,6 +69,14 @@
         <activity
             android:name=".InstanceActivity"
             android:theme="@style/LauncherTheme"
+            android:exported="false" />
+        <activity
+            android:name=".BuildActivity"
+            android:theme="@style/LauncherTheme"
+            android:exported="false" />
+        <service
+            android:name=".BuildService"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
         <!-- Shares copies of logs (InstanceActivity). -->

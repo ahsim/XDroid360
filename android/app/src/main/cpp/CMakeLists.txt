@@ -76,7 +76,7 @@ if (DAO_LAUNCHER_ONLY)
     return()
 endif()
 
-add_library(game SHARED
+set(DAO_FRONT_SOURCES
     ${DAO_SRC}/input/input.cpp
     ${DAO_SRC}/apu/audio_output.cpp
     app_main.cpp
@@ -84,7 +84,9 @@ add_library(game SHARED
     sdl_window.cpp
     virtual_pad_jni.cpp
     keyboard_android.cpp
-    vulkan_private_loader.c)
+    vulkan_private_loader.c
+    xdroid360_note.c)
+add_library(game SHARED ${DAO_FRONT_SOURCES})
 target_compile_options(game PRIVATE ${DAO_RUNTIME_OPTIONS})
 # The runtime's kernel imports and hooks register through static initializers: the whole
 # archive goes in, not only what is referenced.
@@ -92,3 +94,12 @@ target_link_libraries(game PRIVATE -Wl,--whole-archive daodroid-runtime -Wl,--no
 # SDL_main must be visible to SDL's Java side (dlsym); the rest stays hidden.
 # -Bsymbolic: FFmpeg's NEON assembly addresses its tables directly (no GOT).
 target_link_options(game PRIVATE -Wl,--gc-sections -Wl,-Bsymbolic -Wl,-z,max-page-size=16384)
+
+# ---------------------------------------------------------------- the DAO profile
+
+# For building the game on the phone (scripts/make_dao_profile.py): the same front end as a
+# static library, which the phone links whole with the runtime, the deps and the code it
+# translated and compiled itself. Built only on request.
+add_library(dao-front STATIC EXCLUDE_FROM_ALL ${DAO_FRONT_SOURCES})
+target_compile_options(dao-front PRIVATE ${DAO_RUNTIME_OPTIONS})
+target_link_libraries(dao-front PRIVATE daodroid-runtime SDL3::SDL3 linkernsbypass)

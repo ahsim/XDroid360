@@ -42,11 +42,13 @@ import java.util.function.BiConsumer;
 
 /**
  * The launcher: the installed games (instances) as cards (the game's own splash from the
- * player's disc, Play, settings, more), "Add game" (a game package built on the player's PC,
- * docs/PACKAGE_FORMAT.md), and the side menu (driver, saves, the pad's layout, the log, help).
+ * player's disc, Play, settings, more), "Add game" (the player's disc image or game folder,
+ * built into a game on the phone: BuildActivity), the builds that haven't finished, and the
+ * side menu (driver, saves, the pad's layout, the log, help).
  */
 public class LauncherActivity extends AppCompatActivity {
     private final List<Instance> instances = new ArrayList<>();
+    private final List<BuildJob> builds = new ArrayList<>();
     private final Map<String, Bitmap> banners = new HashMap<>();
     private RecyclerView.Adapter<Holder> adapter;
     private View empty;
@@ -56,9 +58,14 @@ public class LauncherActivity extends AppCompatActivity {
     // The document pickers, with what to do with the pick (set just before launching).
     private BiConsumer<Instance, Uri> onPick;
     private Instance pickFor;
-    private final ActivityResultLauncher<String[]> pickPackage =
+    // "Add game": a disc image, or a folder of packages (by the games' recipes, source.pick).
+    private final ActivityResultLauncher<String[]> pickImage =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
-                if (uri != null) confirmImport(uri);
+                if (uri != null) build(uri, "file");
+            });
+    private final ActivityResultLauncher<Uri> pickTree =
+            registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
+                if (uri != null) build(uri, "tree");
             });
     private Instance exportFor;
     private final ActivityResultLauncher<String> exportSaves =
@@ -109,11 +116,13 @@ public class LauncherActivity extends AppCompatActivity {
 
             @Override
             public void onBindViewHolder(@NonNull Holder h, int position) {
-                bind(h, instances.get(position));
+                // The builds that haven't finished first, then the games.
+                if (position < builds.size()) bind(h, builds.get(position));
+                else bind(h, instances.get(position - builds.size()));
             }
 
             @Override
-            public int getItemCount() { return instances.size(); }
+            public int getItemCount() { return builds.size() + instances.size(); }
         };
         list.setAdapter(adapter);
     }
@@ -127,11 +136,30 @@ public class LauncherActivity extends AppCompatActivity {
     private void refresh() {
         instances.clear();
         instances.addAll(Instance.list(this));
+        builds.clear();
+        builds.addAll(BuildJob.unfinished(this));
         adapter.notifyDataSetChanged();
-        empty.setVisibility(instances.isEmpty() ? View.VISIBLE : View.GONE);
+        empty.setVisibility(instances.isEmpty() && builds.isEmpty() ? View.VISIBLE : View.GONE);
+    }
+
+    /** A game being built (or whose build stopped): its build screen, or delete. */
+    private void bind(Holder h, BuildJob job) {
+        h.name.setText(job.name);
+        h.details.setText(BuildService.isRunning(job.id) ? R.string.build_running : R.string.build_unfinished);
+        h.banner.setImageBitmap(null);
+        h.settings.setVisibility(View.GONE);
+        h.play.setVisibility(View.GONE);
+        View.OnClickListener open = v -> startActivity(new Intent(this, BuildActivity.class)
+                .putExtra(BuildActivity.EXTRA_JOB, job.id));
+        h.banner.setOnClickListener(open);
+        h.itemView.setOnClickListener(open);
+        h.more.setOnClickListener(open);
     }
 
     private void bind(Holder h, Instance i) {
+        h.settings.setVisibility(View.VISIBLE);
+        h.play.setVisibility(View.VISIBLE);
+        h.itemView.setOnClickListener(null);
         h.name.setText(i.name);
         h.details.setText(i.buildLabel());
         Bitmap b = banners.get(i.id);
@@ -204,8 +232,44 @@ public class LauncherActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
+    /** Which pick the games this launcher can build need: one picker, or a choice of game first. */
     private void addGame() {
-        pickPackage.launch(new String[] { "*/*" });
+        List<Recipe> games = Toolchain.profiles(this);
+        if (games.isEmpty() || !Toolchain.present(this)) {
+            new MaterialAlertDialogBuilder(this).setTitle(R.string.launcher_add).setMessage(R.string.build_no_toolchain)
+                    .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        boolean files = false, trees = false;
+        for (Recipe r : games) {
+            if ("tree".equals(r.pick())) trees = true;
+            else files = true;
+        }
+        if (!trees) {
+            pickImage.launch(new String[] { "*/*" });
+            return;
+        }
+        if (!files) {
+            pickTree.launch(null);
+            return;
+        }
+        String[] labels = new String[games.size()];
+        for (int i = 0; i < labels.length; i++) {
+            Recipe r = games.get(i);
+            labels[i] = getString("tree".equals(r.pick()) ? R.string.launcher_add_folder : R.string.launcher_add_image, r.title());
+        }
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.launcher_add)
+                .setItems(labels, (d, which) -> {
+                    if ("tree".equals(games.get(which).pick())) pickTree.launch(null);
+                    else pickImage.launch(new String[] { "*/*" });
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void build(Uri uri, String pick) {
+        startActivity(new Intent(this, BuildActivity.class).putExtra(BuildActivity.EXTRA_URI, uri)
+                .putExtra(BuildActivity.EXTRA_PICK, pick));
     }
 
     private void showHow() {
@@ -218,89 +282,6 @@ public class LauncherActivity extends AppCompatActivity {
                 .setPositiveButton(android.R.string.ok, null)
                 .setNeutralButton("GitHub", (d, w) -> startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://github.com/udarmolota/XDroid360"))))
-                .show();
-    }
-
-    private void confirmImport(Uri uri) {
-        new Thread(() -> {
-            try {
-                JSONObject m = PackageImporter.readManifest(this, uri);
-                long need = m.optLong("game_bytes", 0) + 200L * 1024 * 1024;
-                java.io.File base = Instance.daoRoot(this).getParentFile();
-                long free = base != null ? base.getUsableSpace() : 0;
-                ui.post(() -> {
-                    if (free > 0 && free < need) {
-                        showError(getString(R.string.launcher_no_space,
-                                Formatter.formatFileSize(this, need), Formatter.formatFileSize(this, free)));
-                        return;
-                    }
-                    Instance preview = Instance.create(this, m);
-                    new MaterialAlertDialogBuilder(this)
-                            .setTitle(R.string.launcher_import_title)
-                            .setMessage(getString(R.string.launcher_import_message, preview.name, preview.buildLabel(),
-                                    Formatter.formatFileSize(this, need), Formatter.formatFileSize(this, free)))
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .setPositiveButton(R.string.launcher_import_go, (d, w) -> runImport(uri, preview))
-                            .show();
-                });
-            } catch (PackageImporter.Problem e) {
-                ui.post(() -> showError(e.getMessage()));
-            } catch (Exception e) {
-                ui.post(() -> showError(e.toString()));
-            }
-        }).start();
-    }
-
-    private void runImport(Uri uri, Instance instance) {
-        View view = getLayoutInflater().inflate(R.layout.dialog_progress, null);
-        LinearProgressIndicator bar = view.findViewById(R.id.progress);
-        TextView text = view.findViewById(R.id.progress_text);
-        AtomicBoolean cancelled = new AtomicBoolean(false);
-        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.launcher_importing)
-                .setView(view)
-                .setCancelable(false)
-                .setNegativeButton(android.R.string.cancel, (d, w) -> cancelled.set(true))
-                .show();
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        new Thread(() -> {
-            String error = null;
-            try {
-                long[] last = { 0 };
-                PackageImporter.importInto(this, uri, instance, new PackageImporter.Progress() {
-                    @Override
-                    public void onProgress(long done, long total, String entry) {
-                        long now = System.currentTimeMillis();
-                        if (now - last[0] < 200) return;
-                        last[0] = now;
-                        ui.post(() -> {
-                            bar.setProgress(total > 0 ? (int) (done * 1000 / total) : 0);
-                            text.setText(Formatter.formatFileSize(LauncherActivity.this, done) + " / "
-                                    + Formatter.formatFileSize(LauncherActivity.this, total));
-                        });
-                    }
-
-                    @Override
-                    public boolean cancelled() { return cancelled.get(); }
-                });
-            } catch (Exception e) {
-                error = e.getMessage() != null ? e.getMessage() : e.toString();
-            }
-            final String problem = cancelled.get() ? null : error;
-            ui.post(() -> {
-                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                dialog.dismiss();
-                if (problem != null) showError(problem);
-                refresh();
-            });
-        }).start();
-    }
-
-    private void showError(String message) {
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.launcher_import_failed)
-                .setMessage(message)
-                .setPositiveButton(android.R.string.ok, null)
                 .show();
     }
 
