@@ -15,7 +15,7 @@
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
 
-DEFINE_bool(dao_resolve_to_textures, false,
+DEFINE_bool(dao_resolve_to_textures, true,
             "Vulkan: write plain k_8_8_8_8 render target resolves straight into "
             "the textures of the resolved memory, rather than untiling them at "
             "their next use, and copy them from the render target rather than "
