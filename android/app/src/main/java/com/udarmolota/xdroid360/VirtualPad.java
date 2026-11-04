@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 /** The on-screen gamepad's state, handed to the game (virtual_pad_jni.cpp). */
 final class VirtualPad {

@@ -1,4 +1,4 @@
-"""DAODroid's PC tool in a window: pick your disc image and a folder, press Make, wait, and copy
+"""XDroid360's PC tool in a window: pick your disc image and a folder, press Make, wait, and copy
 the game package it makes to your phone. The same steps as daodroid_tool.py.
 
     python scripts/daodroid_tool_gui.py
@@ -22,7 +22,7 @@ RED = "#A80F0F"
 class Window:
     def __init__(self, root):
         self.root = root
-        root.title("DAODroid — make a game package")
+        root.title("XDroid360 — make a game package")
         root.geometry("760x560")
         root.configure(bg="white")
         self.events = queue.Queue()
@@ -37,9 +37,9 @@ class Window:
 
         f = ttk.Frame(root, padding=16)
         f.pack(fill="both", expand=True)
-        ttk.Label(f, text="DAODroid", style="Title.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Label(f, text="XDroid360", style="Title.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(f, text="Your own Dragon Age: Origins Xbox 360 disc image in, a game package for the "
-                          "DAODroid launcher out.", wraplength=700).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 12))
+                          "XDroid360 launcher out.", wraplength=700).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 12))
 
         self.iso = tk.StringVar()
         self.out = tk.StringVar(value=str(Path.home() / "Desktop"))
@@ -88,7 +88,7 @@ class Window:
 
     def start(self):
         if not self.iso.get() or not Path(self.iso.get()).is_file():
-            messagebox.showerror("DAODroid", "Choose your disc image first.")
+            messagebox.showerror("XDroid360", "Choose your disc image first.")
             return
         argv = ["--iso", self.iso.get(), "--out", self.out.get()]
         if self.license.get():
@@ -141,12 +141,12 @@ class Window:
                     self.cancel.configure(state="disabled")
                     if kind == "done":
                         self.bar.configure(mode="determinate", value=1000)
-                        messagebox.showinfo("DAODroid", f"Done:\n{value}\n\nCopy it to your phone and add it in "
-                                                        "DAODroid (+). It's your own copy of the game: don't share it.")
+                        messagebox.showinfo("XDroid360", f"Done:\n{value}\n\nCopy it to your phone and add it in "
+                                                        "XDroid360 (+). It's your own copy of the game: don't share it.")
                         if sys.platform == "win32":
                             os.startfile(Path(value).parent)  # noqa: S606  (opens the folder in Explorer)
                     else:
-                        messagebox.showerror("DAODroid", value)
+                        messagebox.showerror("XDroid360", value)
         except queue.Empty:
             pass
         self.root.after(100, self.pump)

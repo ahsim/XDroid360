@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">DAODroid</string>
+    <string name="app_name">XDroid360</string>
 
     <string name="launcher_empty">No game yet.\n\nBuild a game package from your own Xbox 360 disc on your PC, copy the .x360pkg file to this phone, and add it with the button below.</string>
     <string name="launcher_add">Add game</string>
@@ -44,12 +44,12 @@
     <string name="driver_not_found">No .so driver in that file.</string>
     <string name="launcher_empty_title">No game yet</string>
     <string name="launcher_how">How to add a game</string>
-    <string name="launcher_how_text">1. On your PC, build a game package from your own Xbox 360 disc of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition) with DAODroid\'s PC tool.\n\n2. Copy the .x360pkg file to this phone (a cable, a cloud drive, a messenger).\n\n3. Tap + and pick the file. The launcher checks it and copies the game in.\n\n4. Tap Play.\n\nThe package is your own copy of the game: don\'t share it.</string>
+    <string name="launcher_how_text">1. On your PC, build a game package from your own Xbox 360 disc of Dragon Age: Origins (the English/Italian/Spanish edition, or disc 1 of its Ultimate Edition) with XDroid360\'s PC tool.\n\n2. Copy the .x360pkg file to this phone (a cable, a cloud drive, a messenger).\n\n3. Tap + and pick the file. The launcher checks it and copies the game in.\n\n4. Tap Play.\n\nThe package is your own copy of the game: don\'t share it.</string>
     <string name="nav_install_driver">Install a driver</string>
     <string name="nav_install_saves">Install saves (.zip)</string>
     <string name="nav_pad_editor">On-screen gamepad layout</string>
     <string name="nav_about">About</string>
-    <string name="about_text">DAODroid: Dragon Age: Origins (Xbox 360) on Android, built on DAORecomp by 96dot, Xenia\'s Vulkan backend and Mesa\'s Turnip. Made with the help of AI.\n\nNo game code or data comes with this app: each player builds their own game package from their own disc.\n\nDragon Age is a trademark of Electronic Arts; this project is not affiliated with EA or BioWare.</string>
+    <string name="about_text">XDroid360: Dragon Age: Origins (Xbox 360) on Android, built on DAORecomp by 96dot, Xenia\'s Vulkan backend and Mesa\'s Turnip. Made with the help of AI.\n\nNo game code or data comes with this app: each player builds their own game package from their own disc.\n\nDragon Age is a trademark of Electronic Arts; this project is not affiliated with EA or BioWare.</string>
     <string name="instance_more">More</string>
     <string name="instance_delete_go">Delete</string>
     <string name="saves_installed">Saves installed: %1$d files</string>
@@ -64,7 +64,7 @@
     <string name="bug_report_game">Game</string>
     <string name="bug_report_what">What goes into the report</string>
     <string name="bug_report_inc_log">The game\'s log (dao.log)</string>
-    <string name="bug_report_inc_logcat">Android\'s log of DAODroid (logcat)</string>
+    <string name="bug_report_inc_logcat">Android\'s log of XDroid360 (logcat)</string>
     <string name="bug_report_inc_config">The game\'s settings (config.toml, env.txt)</string>
     <string name="bug_report_inc_crash">Crash records</string>
     <string name="bug_report_always">The phone\'s model, Android version, GPU, the last device check and the game\'s build are always included. No saves, no game files.</string>

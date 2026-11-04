@@ -1,4 +1,4 @@
-# The app's native side (phase 5): libdaodroid.so, the game as an SDL3 application
+# The app's native side (phase 5): libgame.so, the game as an SDL3 application
 # (SDL owns the activity, the window, the gamepads and the audio device), on the runtime
 # library from android/runtime and Xenia's Vulkan GPU painting into the window; and
 # libvkdriverhook.so, part of the private Vulkan loader that runs the game on a Turnip
@@ -76,7 +76,7 @@ if (DAO_LAUNCHER_ONLY)
     return()
 endif()
 
-add_library(daodroid SHARED
+add_library(game SHARED
     ${DAO_SRC}/input/input.cpp
     ${DAO_SRC}/apu/audio_output.cpp
     app_main.cpp
@@ -85,10 +85,10 @@ add_library(daodroid SHARED
     virtual_pad_jni.cpp
     keyboard_android.cpp
     vulkan_private_loader.c)
-target_compile_options(daodroid PRIVATE ${DAO_RUNTIME_OPTIONS})
+target_compile_options(game PRIVATE ${DAO_RUNTIME_OPTIONS})
 # The runtime's kernel imports and hooks register through static initializers: the whole
 # archive goes in, not only what is referenced.
-target_link_libraries(daodroid PRIVATE -Wl,--whole-archive daodroid-runtime -Wl,--no-whole-archive SDL3::SDL3 linkernsbypass android log)
+target_link_libraries(game PRIVATE -Wl,--whole-archive daodroid-runtime -Wl,--no-whole-archive SDL3::SDL3 linkernsbypass android log)
 # SDL_main must be visible to SDL's Java side (dlsym); the rest stays hidden.
 # -Bsymbolic: FFmpeg's NEON assembly addresses its tables directly (no GOT).
-target_link_options(daodroid PRIVATE -Wl,--gc-sections -Wl,-Bsymbolic -Wl,-z,max-page-size=16384)
+target_link_options(game PRIVATE -Wl,--gc-sections -Wl,-Bsymbolic -Wl,-z,max-page-size=16384)

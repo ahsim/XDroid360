@@ -1,5 +1,5 @@
-"""Builds what players download for the PC: dist/DAODroid-Tool-<version>.zip, a folder that runs
-without installing anything: unzip, double-click "DAODroid Tool.cmd", pick the disc image.
+"""Builds what players download for the PC: dist/XDroid360-Tool-<version>.zip, a folder that runs
+without installing anything: unzip, double-click "XDroid360 Tool.cmd", pick the disc image.
 
     python scripts/build_tool_release.py [--version 0.2.0]
 
@@ -10,7 +10,7 @@ Inside:
   src/      the files git tracks in this repository and in recomp/ (DAORecomp, the daodroid
             branch): the tool, the runtime and Xenia sources it compiles. No game code or data,
             no build output; the launcher's APK-only files (jniLibs) are left out.
-  DAODroid Tool.cmd
+  XDroid360 Tool.cmd
 The tools the tool needs (LLVM, the Windows SDK headers, XenonRecomp, the NDK, portable git)
 are downloaded by it on its first run, pinned and checked, as DAORecomp's installer does.
 (Not PyInstaller: DAORecomp moved away from it after antivirus false positives.)
@@ -34,26 +34,26 @@ PY_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_in
 EMBED_URL = f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip"
 
 CMD = r"""@echo off
-rem DAODroid's PC tool: your own Dragon Age: Origins Xbox 360 disc image in, a game package
-rem for the DAODroid launcher out. Nothing to install: this folder carries its own Python.
+rem XDroid360's PC tool: your own Dragon Age: Origins Xbox 360 disc image in, a game package
+rem for the XDroid360 launcher out. Nothing to install: this folder carries its own Python.
 cd /d "%~dp0"
 start "" "%~dp0python\pythonw.exe" -I "%~dp0src\scripts\daodroid_tool_gui.py"
 """
 
-README = """DAODroid's PC tool
+README = """XDroid360's PC tool
 ==================
 
 1. Unzip this folder somewhere with about 30 GB free (the game, the tools, the build).
-2. Double-click "DAODroid Tool.cmd".
+2. Double-click "XDroid360 Tool.cmd".
 3. Pick your Dragon Age: Origins Xbox 360 disc image (.iso) and a folder for the package.
 4. Wait (about an hour the first time: it downloads and sets up its tools).
-5. Copy the .x360pkg file to your phone and add it in the DAODroid launcher (+).
+5. Copy the .x360pkg file to your phone and add it in the XDroid360 launcher (+).
 
 If Windows says Smart App Control blocked XenonRecomp.exe: the tool can't run on this PC while
 Smart App Control is on (see Known issues on the project page).
 
 The package is your own copy of the game: don't share it.
-Source and help: https://github.com/udarmolota/DAODroid
+Source and help: https://github.com/udarmolota/XDroid360
 """
 
 
@@ -69,7 +69,7 @@ def main():
     if sys.platform != "win32":
         sys.exit("Built on Windows (the folder runs on Windows).")
 
-    stage = WORK / "DAODroid-Tool"
+    stage = WORK / "XDroid360-Tool"
     if stage.exists():
         shutil.rmtree(stage)
     (stage / "python").mkdir(parents=True)
@@ -137,18 +137,18 @@ def main():
     from make_package import git_commit
     (stage / "src" / "BUILD.json").write_text(json.dumps(
         {"daodroid": git_commit(ROOT), "daorecomp": git_commit(ROOT / "recomp")}, indent=2) + "\n", encoding="utf-8")
-    (stage / "DAODroid Tool.cmd").write_text(CMD.replace("\n", "\r\n"), encoding="utf-8")
+    (stage / "XDroid360 Tool.cmd").write_text(CMD.replace("\n", "\r\n"), encoding="utf-8")
     (stage / "README.txt").write_text(README.replace("\n", "\r\n"), encoding="utf-8")
     print(f"Source: {count} files")
 
     DIST.mkdir(exist_ok=True)
-    out = DIST / f"DAODroid-Tool-{args.version}.zip"
+    out = DIST / f"XDroid360-Tool-{args.version}.zip"
     if out.exists():
         out.unlink()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for p in sorted(stage.rglob("*")):
             if p.is_file():
-                z.write(p, Path("DAODroid-Tool") / p.relative_to(stage))
+                z.write(p, Path("XDroid360-Tool") / p.relative_to(stage))
     print(f"Built {out} ({out.stat().st_size / 2**20:.1f} MB)")
 
 

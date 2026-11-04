@@ -86,7 +86,7 @@ namespace
     }
 
     // The game library's load address, for offsets llvm-symbolizer can take against the
-    // unstripped libdaodroid.so.
+    // unstripped libgame.so.
     uintptr_t LibraryBase()
     {
         Dl_info info{};
@@ -112,7 +112,7 @@ namespace
         {
             const auto& mc = static_cast<ucontext_t*>(uctx)->uc_mcontext;
             const uintptr_t base = LibraryBase();
-            LOGE("  host pc +{:X} lr +{:X} (libdaodroid.so offsets); x0 {:X} x1 {:X} x19 {:X} x20 {:X}",
+            LOGE("  host pc +{:X} lr +{:X} (libgame.so offsets); x0 {:X} x1 {:X} x19 {:X} x20 {:X}",
                 uintptr_t(mc.pc) - base, uintptr_t(mc.regs[30]) - base, uintptr_t(mc.regs[0]),
                 uintptr_t(mc.regs[1]), uintptr_t(mc.regs[19]), uintptr_t(mc.regs[20]));
             const auto* ctx = reinterpret_cast<const PPCContext*>(mc.regs[19]);
@@ -213,7 +213,7 @@ int main(int argc, char* argv[])
         }
         if (!model[0] || strncmp(model, "Adreno8", 7) == 0)
             setenv("TU_DEBUG", "sysmem", 0);
-        __android_log_print(ANDROID_LOG_INFO, "DAODroid", "GPU %s, TU_DEBUG=%s", model[0] ? model : "(unknown)",
+        __android_log_print(ANDROID_LOG_INFO, "XDroid360", "GPU %s, TU_DEBUG=%s", model[0] ? model : "(unknown)",
             getenv("TU_DEBUG") ? getenv("TU_DEBUG") : "(unset)");
     }
     const Options options = ParseOptions(argc, argv);
@@ -222,7 +222,7 @@ int main(int argc, char* argv[])
     std::error_code ec;
     fs::create_directories(userRoot, ec);
     dao::log::Init(userRoot / "dao.log");
-    __android_log_print(ANDROID_LOG_INFO, "DAODroid", "install folder %s, log in userdata/dao.log",
+    __android_log_print(ANDROID_LOG_INFO, "XDroid360", "install folder %s, log in userdata/dao.log",
         dao::Utf8(options.installRoot).c_str());
 
     LOGI("Dragon Age: Origins recomp (Android app) - game {}, user data {}", dao::Utf8(gameRoot), dao::Utf8(userRoot));

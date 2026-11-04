@@ -1,5 +1,5 @@
-// The DAODroid app: SDL3's Java side plus GameActivity, and the native build
-// (src/main/cpp/CMakeLists.txt): libSDL3.so, libdaodroid.so (the runtime, Xenia's Vulkan GPU
+// The XDroid360 app: SDL3's Java side plus GameActivity, and the native build
+// (src/main/cpp/CMakeLists.txt): libSDL3.so, libgame.so (the runtime, Xenia's Vulkan GPU
 // and the translated game code from recomp/ppc), libvkdriverhook.so. Build it only from
 // your own disc's translated code (README): the APK holds that code and is yours alone.
 plugins {
@@ -17,12 +17,12 @@ if (signingFile.isFile()) {
 def hasSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every { signing.getProperty(it) }
 
 android {
-    namespace 'com.daodroid'
+    namespace 'com.udarmolota.xdroid360'
     compileSdk 36
     ndkVersion "27.3.13750724"
 
     defaultConfig {
-        applicationId "com.daodroid"
+        applicationId "com.udarmolota.xdroid360"
         minSdk 29
         targetSdk 35
         versionCode 1
@@ -49,7 +49,7 @@ android {
 
     // Two APKs: "dev" holds the game library built from this PC's translated code (the
     // development build, never shared); "launcher" holds none (no game code at all) and runs a
-    // game package (dao/libdaodroid.so and the game files) built on the player's PC.
+    // game package (dao/libgame.so and the game files) built on the player's PC.
     signingConfigs {
         if (hasSigning) {
             release {
@@ -83,11 +83,11 @@ android {
         }
     }
 
-    // daodroid-<flavor>-<build type>-<version>.apk, e.g. daodroid-launcher-release-0.1.0.apk
+    // xdroid360-<flavor>-<build type>-<version>.apk, e.g. xdroid360-launcher-release-0.1.0.apk
     // (the version without the flavor's suffix: the flavor is in the name already).
     applicationVariants.all { variant ->
         variant.outputs.all {
-            outputFileName = "daodroid-${variant.flavorName}-${variant.buildType.name}-${defaultConfig.versionName}.apk"
+            outputFileName = "xdroid360-${variant.flavorName}-${variant.buildType.name}-${defaultConfig.versionName}.apk"
         }
     }
 

@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.content.Context;
 import android.net.Uri;
@@ -27,7 +27,7 @@ import java.util.zip.ZipInputStream;
 final class PackageImporter {
     /** The newest format this launcher reads; format 1 (.daopkg) is the same layout without "title". */
     static final int FORMAT = 2;
-    static final String LIBRARY_ENTRY = "lib/arm64-v8a/libdaodroid.so";
+    static final String LIBRARY_ENTRY = "lib/arm64-v8a/libgame.so";
 
     interface Progress {
         void onProgress(long done, long total, String entry);
@@ -55,7 +55,7 @@ final class PackageImporter {
             }
             int format = m.optInt("format", -1);
             if (format > FORMAT) {
-                throw new Problem("This package is newer than this launcher (format " + format + "): update DAODroid.");
+                throw new Problem("This package is newer than this launcher (format " + format + "): update XDroid360.");
             }
             if (format < 1) {
                 throw new Problem("Unknown package format " + format + ".");
@@ -63,8 +63,8 @@ final class PackageImporter {
             int abi = m.optInt("abi", -1);
             if (abi != GameActivity.DAO_ABI) {
                 throw new Problem(abi > GameActivity.DAO_ABI
-                        ? "This package was built for a newer DAODroid (version " + abi + "): update the launcher."
-                        : "This package was built for an older DAODroid (version " + abi + "): build it again with the current tools.");
+                        ? "This package was built for a newer XDroid360 (version " + abi + "): update the launcher."
+                        : "This package was built for an older XDroid360 (version " + abi + "): build it again with the current tools.");
             }
             // Which edition of the game the code matches is checked by the PC tool when it builds the
             // package and by the game library when it starts; the launcher only needs to know the game.
@@ -130,7 +130,7 @@ final class PackageImporter {
                 try {
                     InstanceActions.copyShaderCache(warm, instance);
                 } catch (IOException cacheError) {
-                    android.util.Log.w("DAODroid", "shader cache from " + warm.id + ": " + cacheError);
+                    android.util.Log.w("XDroid360", "shader cache from " + warm.id + ": " + cacheError);
                 }
             }
             instance.name = Instance.uniqueName(Instance.list(context), instance.name);

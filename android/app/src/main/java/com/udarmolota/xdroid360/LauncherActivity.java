@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -217,7 +217,7 @@ public class LauncherActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this).setTitle(R.string.app_name).setMessage(R.string.about_text)
                 .setPositiveButton(android.R.string.ok, null)
                 .setNeutralButton("GitHub", (d, w) -> startActivity(new Intent(Intent.ACTION_VIEW,
-                        Uri.parse("https://github.com/udarmolota/DAODroid"))))
+                        Uri.parse("https://github.com/udarmolota/XDroid360"))))
                 .show();
     }
 

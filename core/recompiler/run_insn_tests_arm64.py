@@ -2,7 +2,7 @@
 
 Builds tests/insn/checks.cpp + the generated tests/insn/gen/*.cpp (run_insn_tests.py makes
 gen/) into one standalone executable with the Android NDK's clang (aarch64-linux-android30,
-static libc++), the generated code with DAODroid's flags for it (android/ppc-probe:
+static libc++), the generated code with XDroid360's flags for it (android/ppc-probe:
 -fno-strict-aliasing -ffp-model=strict -ffp-contract=off). Then it pushes the binary to
 /data/local/tmp/dao_insn_tests/ over adb, runs it, saves the output to
 build/insn_tests_arm64/out.txt and removes that folder from the phone again.
@@ -22,7 +22,7 @@ TESTS = HERE / 'tests' / 'insn'
 BUILD = ROOT / 'build' / 'insn_tests_arm64'
 XENONRECOMP = ROOT / 'recomp' / 'tools' / 'XenonRecomp'
 SDK = Path(os.environ.get('LOCALAPPDATA', '')) / 'Android' / 'Sdk'
-NDK = SDK / 'ndk' / '27.3.13750724'  # DAODroid's pinned NDK
+NDK = SDK / 'ndk' / '27.3.13750724'  # XDroid360's pinned NDK
 CLANG = NDK / 'toolchains' / 'llvm' / 'prebuilt' / 'windows-x86_64' / 'bin' / 'clang++.exe'
 ADB = SDK / 'platform-tools' / 'adb.exe'
 REMOTE = '/data/local/tmp/dao_insn_tests'

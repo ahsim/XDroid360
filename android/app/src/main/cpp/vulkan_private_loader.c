@@ -9,7 +9,7 @@
 
 #include "android_linker_ns.h"
 
-#define LOG(...) __android_log_print(ANDROID_LOG_INFO, "DAODroid", __VA_ARGS__)
+#define LOG(...) __android_log_print(ANDROID_LOG_INFO, "XDroid360", __VA_ARGS__)
 
 void* dao_open_private_vulkan_loader(const char* driver_path, const char* hook_dir)
 {
@@ -31,7 +31,7 @@ void* dao_open_private_vulkan_loader(const char* driver_path, const char* hook_d
         driver_path);
 
     struct android_namespace_t* ns =
-        android_create_namespace("daodroid-vulkan", search, search, ANDROID_NAMESPACE_TYPE_SHARED, NULL, NULL);
+        android_create_namespace("xdroid360-vulkan", search, search, ANDROID_NAMESPACE_TYPE_SHARED, NULL, NULL);
     if (!ns)
     {
         LOG("vulkan loader: android_create_namespace failed");

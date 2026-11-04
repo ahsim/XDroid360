@@ -3,7 +3,7 @@
 # the game's hooks, menu patches, settings and the generated game code, as one static
 # library (daodroid-runtime) with two front ends:
 #   daodroid_headless  a command-line executable for adb: no window, no SDL (phases 3-4)
-#   libdaodroid.so     the app's game library (android/app/src/main/cpp, phase 5)
+#   libgame.so     the app's game library (android/app/src/main/cpp, phase 5)
 # See docs/PHASE3_runbook.md, PHASE4_runbook.md and PHASE5_runbook.md.
 #
 #   cmake -G Ninja -S android/runtime -B build/runtime \

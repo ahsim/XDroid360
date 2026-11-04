@@ -1,4 +1,4 @@
-"""DAODroid's PC tool: your own disc image in, a game package (.x360pkg) for the launcher out.
+"""XDroid360's PC tool: your own disc image in, a game package (.x360pkg) for the launcher out.
 
     python scripts/daodroid_tool.py --iso "<the disc image>" --out "<folder for the package>"
         [--accept-msvc-license] [--jobs N] [--work <folder>]
@@ -9,10 +9,10 @@ What it does (the parts that come from DAORecomp's installer are its own code, r
   3. sets up the tools (sources, LLVM, on Windows the MSVC headers, XenonRecomp) and translates
      the game's code (recomp/ppc);
   4. gets the Android NDK r27d (the installed one from the Android SDK, or a download checked
-     against Google's published checksum) and builds the game library for ARM64 (libdaodroid.so);
+     against Google's published checksum) and builds the game library for ARM64 (libgame.so);
   5. packs the game files and the library into the package (docs/PACKAGE_FORMAT.md).
 
-No Android Studio is needed. Copy the package to the phone and add it in the DAODroid launcher.
+No Android Studio is needed. Copy the package to the phone and add it in the XDroid360 launcher.
 The package is your own copy of the game: don't share it.
 """
 import argparse
@@ -138,7 +138,7 @@ def ensure_vulkan_sources(reporter):
 
 
 def build_library(reporter, tc, ndk, work, jobs):
-    """libdaodroid.so with the NDK, CMake and Ninja (the app's native build, without Gradle)."""
+    """libgame.so with the NDK, CMake and Ninja (the app's native build, without Gradle)."""
     build = work / "android"
     configure = [str(tc.cmake), "-G", "Ninja", "-S", str(ROOT / "android" / "app" / "src" / "main" / "cpp"),
                  "-B", str(build),
@@ -147,11 +147,11 @@ def build_library(reporter, tc, ndk, work, jobs):
                  "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-29", "-DANDROID_STL=c++_static",
                  "-DCMAKE_BUILD_TYPE=Release", f"-DPython3_EXECUTABLE={sys.executable}"]
     run(reporter, configure, work / "android-configure.log")
-    run(reporter, [str(tc.cmake), "--build", str(build), "--target", "daodroid", "--", f"-j{jobs}"],
+    run(reporter, [str(tc.cmake), "--build", str(build), "--target", "game", "--", f"-j{jobs}"],
         work / "android-build.log")
-    library = build / "libdaodroid.so"
+    library = build / "libgame.so"
     if not library.is_file():
-        found = list(build.rglob("libdaodroid.so"))
+        found = list(build.rglob("libgame.so"))
         if not found:
             raise InstallError(f"The game library wasn't built (see {work / 'android-build.log'}).")
         library = found[0]
@@ -225,7 +225,7 @@ def main(argv=None, reporter=None):
     step(reporter, 5, "Packing the game package")
     package = make_package.build(argparse.Namespace(game=str(game), library=str(library),
                                                     title_update=None, out=args.out))
-    reporter.status(f"Done: {package}\nCopy it to your phone and add it in DAODroid (+). "
+    reporter.status(f"Done: {package}\nCopy it to your phone and add it in XDroid360 (+). "
                     "It's your own copy of the game: don't share it.")
     return package
 

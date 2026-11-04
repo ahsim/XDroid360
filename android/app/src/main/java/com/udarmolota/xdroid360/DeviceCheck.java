@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.app.ActivityManager;
 import android.content.Context;

@@ -1,12 +1,12 @@
 """Makes a game package (.x360pkg, docs/PACKAGE_FORMAT.md) from the extracted game files and a
 built game library, or checks one (format 2, or an older format 1 .daopkg).
 
-    make_package.py build --game <install/game> --library <libdaodroid.so> [--title-update <dir>] --out <dir>
+    make_package.py build --game <install/game> --library <libgame.so> [--title-update <dir>] --out <dir>
     make_package.py check <package.x360pkg>
 
 The package holds the game's translated code and data: it is the player's own copy, never to be
 shared. This is the packaging step of the PC tool; for now the library comes from the app's dev
-build (android/app/build/intermediates/cxx/.../libdaodroid.so).
+build (android/app/build/intermediates/cxx/.../libgame.so).
 """
 import argparse
 import datetime
@@ -25,7 +25,7 @@ from installer import deps  # noqa: E402  (recomp/installer/deps.py: the disc an
 FORMAT = 2
 FORMATS = (1, 2)  # check reads these; format 1 is the same layout without "title" (.daopkg)
 TOOL = "make_package.py 2"
-LIBRARY_ENTRY = "lib/arm64-v8a/libdaodroid.so"
+LIBRARY_ENTRY = "lib/arm64-v8a/libgame.so"
 TITLE = "Dragon Age: Origins"
 TITLE_ID = "454108C0"
 MEDIA_ID = "186A1115"

@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -14,14 +14,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The game's activity: SDL's, with the game library (libdaodroid.so, the runtime and the
+ * The game's activity: SDL's, with the game library (libgame.so, the runtime and the
  * translated game code) as the main one. It runs one instance (Instance, chosen in the
  * launcher; without one, the development build's game in {@code files/dao/}), with that
  * instance's files ({@code game/}, {@code userdata/}, {@code driver/}) and settings. What's
- * missing is logged to logcat (tag DAODroid) and the instance's userdata/dao.log.
+ * missing is logged to logcat (tag XDroid360) and the instance's userdata/dao.log.
  */
 public class GameActivity extends SDLActivity {
-    private static final String TAG = "DAODroid";
+    private static final String TAG = "XDroid360";
     /** The built-in Turnip (Mesa, MIT): Turnip Gen8 V38 for the Adreno 8xx, in the APK's libraries. */
     static final String BUILTIN_DRIVER = "libvulkan_turnip_gen8.so";
 
@@ -30,18 +30,18 @@ public class GameActivity extends SDLActivity {
 
     @Override
     protected String[] getLibraries() {
-        return new String[] { "SDL3", "daodroid" };
+        return new String[] { "SDL3", "game" };
     }
 
-    // The game library (libdaodroid.so: the runtime, Xenia and the translated game code). A
-    // game package built on the PC puts it at dao/libdaodroid.so; it is copied into the app's
+    // The game library (libgame.so: the runtime, Xenia and the translated game code). A
+    // game package built on the PC puts it at dao/libgame.so; it is copied into the app's
     // internal files (code can't be mapped from the shared storage) and loaded from there.
     // Without one, the copy built into this APK is used (the development build); a launcher
     // build has none and asks for a package.
     //
     // The version of the interface between this Java side and the library (JNI methods, SDL,
     // command-line options). Keep in step with DAO_ABI_VERSION in cpp/dao_abi.h.
-    static final int DAO_ABI = 1;
+    static final int DAO_ABI = 2;
     private String gameLibrary;
 
     private static native int nativeAbiVersion();
@@ -49,7 +49,7 @@ public class GameActivity extends SDLActivity {
     @Override
     public void loadLibraries() {
         System.loadLibrary("SDL3");
-        File packaged = new File(installRoot(this), "libdaodroid.so");
+        File packaged = new File(installRoot(this), "libgame.so");
         if (current != null && current.library != null) {
             if (!current.library.isFile()) {
                 throw new UnsatisfiedLinkError("This game's library is missing: add the game package again");
@@ -67,12 +67,12 @@ public class GameActivity extends SDLActivity {
             Log.i(TAG, "Game library: from the game package (" + packaged + ")");
         } else {
             try {
-                System.loadLibrary("daodroid");
+                System.loadLibrary("game");
             } catch (UnsatisfiedLinkError e) {
                 throw new UnsatisfiedLinkError("No game package: put the one you built on your PC into "
                         + installRoot(this) + " (see the README)");
             }
-            gameLibrary = getApplicationInfo().nativeLibraryDir + "/libdaodroid.so";
+            gameLibrary = getApplicationInfo().nativeLibraryDir + "/libgame.so";
             Log.i(TAG, "Game library: the one built into the APK");
         }
         int abi = nativeAbiVersion();

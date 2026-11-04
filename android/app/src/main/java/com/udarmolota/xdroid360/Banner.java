@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -39,7 +39,7 @@ final class Banner {
                 }
                 return small;
             } catch (IOException | RuntimeException e) {
-                android.util.Log.w("DAODroid", "banner of " + instance.id + ": " + e);
+                android.util.Log.w("XDroid360", "banner of " + instance.id + ": " + e);
                 return null;
             }
         }

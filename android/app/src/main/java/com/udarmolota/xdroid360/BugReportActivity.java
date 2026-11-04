@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -81,7 +81,7 @@ public class BugReportActivity extends AppCompatActivity {
         incCrash = findViewById(R.id.inc_crash);
 
         findViewById(R.id.email).setOnClickListener(v -> sendEmail());
-        findViewById(R.id.save).setOnClickListener(v -> save.launch("daodroid_report_" + stamp() + ".zip"));
+        findViewById(R.id.save).setOnClickListener(v -> save.launch("xdroid360_report_" + stamp() + ".zip"));
         findViewById(R.id.copy).setOnClickListener(v -> {
             ClipboardManager cm = getSystemService(ClipboardManager.class);
             cm.setPrimaryClip(ClipData.newPlainText("e-mail", getString(R.string.bug_report_email)));
@@ -99,7 +99,7 @@ public class BugReportActivity extends AppCompatActivity {
             File dir = new File(getCacheDir(), "logs");
             //noinspection ResultOfMethodCallIgnored
             dir.mkdirs();
-            File zip = new File(dir, "daodroid_report_" + stamp() + ".zip");
+            File zip = new File(dir, "xdroid360_report_" + stamp() + ".zip");
             try (OutputStream out = new FileOutputStream(zip)) {
                 writeReport(out);
             }
@@ -107,7 +107,7 @@ public class BugReportActivity extends AppCompatActivity {
             Intent send = new Intent(Intent.ACTION_SEND)
                     .setType("application/zip")
                     .putExtra(Intent.EXTRA_EMAIL, new String[] { getString(R.string.bug_report_email) })
-                    .putExtra(Intent.EXTRA_SUBJECT, "DAODroid bug report")
+                    .putExtra(Intent.EXTRA_SUBJECT, "XDroid360 bug report")
                     .putExtra(Intent.EXTRA_TEXT, deviceInfo() + "\n\nWhat happened:\n")
                     .putExtra(Intent.EXTRA_STREAM, attach)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -162,7 +162,7 @@ public class BugReportActivity extends AppCompatActivity {
             gpu = new String(readAll(in), StandardCharsets.UTF_8).trim();
         } catch (IOException ignored) {
         }
-        return "DAODroid " + version + " (abi " + GameActivity.DAO_ABI + ")"
+        return "XDroid360 " + version + " (abi " + GameActivity.DAO_ABI + ")"
                 + "\nDevice: " + Build.MANUFACTURER + " " + Build.MODEL
                 + "\nAndroid: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
                 + "\nSoC: " + (Build.VERSION.SDK_INT >= 31 ? Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL : "?")

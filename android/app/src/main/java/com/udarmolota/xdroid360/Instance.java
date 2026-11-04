@@ -1,4 +1,4 @@
-package com.daodroid;
+package com.udarmolota.xdroid360;
 
 import android.content.Context;
 
@@ -171,7 +171,7 @@ final class Instance {
                 presetWritten = s.optBoolean("preset_written", presetWritten);
             }
         } catch (IOException | JSONException e) {
-            android.util.Log.w("DAODroid", "instance.json of " + id + ": " + e);
+            android.util.Log.w("XDroid360", "instance.json of " + id + ": " + e);
         }
     }
 
@@ -188,12 +188,12 @@ final class Instance {
     }
 
     static File libraryFor(Context context, String id) {
-        return new File(new File(new File(context.getFilesDir(), "instances"), id), "libdaodroid.so");
+        return new File(new File(new File(context.getFilesDir(), "instances"), id), "libgame.so");
     }
 
     /** Whether this APK holds the game library (the development build). */
     static boolean apkHasGameLibrary(Context context) {
-        return new File(context.getApplicationInfo().nativeLibraryDir, "libdaodroid.so").isFile();
+        return new File(context.getApplicationInfo().nativeLibraryDir, "libgame.so").isFile();
     }
 
     static Instance open(Context context, String id) {

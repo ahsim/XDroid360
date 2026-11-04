@@ -42,12 +42,12 @@
     <string name="driver_not_found">В этом файле нет драйвера .so.</string>
     <string name="launcher_empty_title">Игры пока нет</string>
     <string name="launcher_how">Как добавить игру</string>
-    <string name="launcher_how_text">1. На ПК соберите пакет игры со своего диска Dragon Age: Origins для Xbox 360 (английское/итальянское/испанское издание или диск 1 Ultimate Edition) ПК-программой DAODroid.\n\n2. Скопируйте файл .x360pkg на телефон (кабелем, через облако, мессенджером).\n\n3. Нажмите + и выберите файл. Лаунчер проверит его и скопирует игру.\n\n4. Нажмите «Играть».\n\nПакет — ваша личная копия игры: не раздавайте его.</string>
+    <string name="launcher_how_text">1. На ПК соберите пакет игры со своего диска Dragon Age: Origins для Xbox 360 (английское/итальянское/испанское издание или диск 1 Ultimate Edition) ПК-программой XDroid360.\n\n2. Скопируйте файл .x360pkg на телефон (кабелем, через облако, мессенджером).\n\n3. Нажмите + и выберите файл. Лаунчер проверит его и скопирует игру.\n\n4. Нажмите «Играть».\n\nПакет — ваша личная копия игры: не раздавайте его.</string>
     <string name="nav_install_driver">Установить драйвер</string>
     <string name="nav_install_saves">Установить сохранения (.zip)</string>
     <string name="nav_pad_editor">Раскладка экранного геймпада</string>
     <string name="nav_about">О программе</string>
-    <string name="about_text">DAODroid: Dragon Age: Origins (Xbox 360) на Android, на основе DAORecomp от 96dot, Vulkan-бэкенда Xenia и Turnip из Mesa. Сделано с помощью ИИ.\n\nКода и данных игры в приложении нет: каждый собирает свой пакет игры со своего диска.\n\nDragon Age — товарный знак Electronic Arts; проект не связан с EA и BioWare.</string>
+    <string name="about_text">XDroid360: Dragon Age: Origins (Xbox 360) на Android, на основе DAORecomp от 96dot, Vulkan-бэкенда Xenia и Turnip из Mesa. Сделано с помощью ИИ.\n\nКода и данных игры в приложении нет: каждый собирает свой пакет игры со своего диска.\n\nDragon Age — товарный знак Electronic Arts; проект не связан с EA и BioWare.</string>
     <string name="instance_more">Ещё</string>
     <string name="instance_delete_go">Удалить</string>
     <string name="saves_installed">Сохранения установлены: файлов %1$d</string>
@@ -62,7 +62,7 @@
     <string name="bug_report_game">Игра</string>
     <string name="bug_report_what">Что войдёт в отчёт</string>
     <string name="bug_report_inc_log">Лог игры (dao.log)</string>
-    <string name="bug_report_inc_logcat">Лог Android для DAODroid (logcat)</string>
+    <string name="bug_report_inc_logcat">Лог Android для XDroid360 (logcat)</string>
     <string name="bug_report_inc_config">Настройки игры (config.toml, env.txt)</string>
     <string name="bug_report_inc_crash">Записи о вылетах</string>
     <string name="bug_report_always">Модель телефона, версия Android, GPU, последняя проверка устройства и сборка игры добавляются всегда. Сохранений и файлов игры в отчёте нет.</string>

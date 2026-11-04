@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DAODroid"
+rootProject.name = "XDroid360"
 include(":app")

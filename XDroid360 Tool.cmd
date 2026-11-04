@@ -1,5 +1,5 @@
 @echo off
-rem DAODroid's PC tool: your own disc image in, a game package for the launcher out.
+rem XDroid360's PC tool: your own disc image in, a game package for the launcher out.
 rem Needs Python 3.10+ (python.org; "Add python.exe to PATH" when installing).
 cd /d "%~dp0"
 where python >nul 2>nul || (

@@ -87,7 +87,7 @@ namespace dao::ui
 }
 
 // From the dialog: the text entered, or null if the player cancelled.
-extern "C" JNIEXPORT void JNICALL Java_com_daodroid_GameActivity_nativeKeyboardDone(JNIEnv* env, jclass, jstring text)
+extern "C" JNIEXPORT void JNICALL Java_com_udarmolota_xdroid360_GameActivity_nativeKeyboardDone(JNIEnv* env, jclass, jstring text)
 {
     std::optional<std::u16string> result;
     if (text)

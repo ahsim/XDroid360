@@ -92,7 +92,7 @@ static void probe(Out* o, void* loader)
     put_version(o, "instance.version", instance_version);
 
     VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    app.pApplicationName = "DAODroid device check";
+    app.pApplicationName = "XDroid360 device check";
     app.apiVersion = instance_version >= VK_API_VERSION_1_3 ? VK_API_VERSION_1_3 : instance_version;
     VkInstanceCreateInfo instance_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     instance_info.pApplicationInfo = &app;
@@ -246,7 +246,7 @@ static void probe(Out* o, void* loader)
     put(o, "done=1\n");
 }
 
-JNIEXPORT jstring JNICALL Java_com_daodroid_DeviceCheck_nativeProbe(JNIEnv* env, jclass cls, jstring driver_path,
+JNIEXPORT jstring JNICALL Java_com_udarmolota_xdroid360_DeviceCheck_nativeProbe(JNIEnv* env, jclass cls, jstring driver_path,
                                                                     jstring hook_dir)
 {
     (void)cls;
@@ -259,7 +259,7 @@ JNIEXPORT jstring JNICALL Java_com_daodroid_DeviceCheck_nativeProbe(JNIEnv* env,
     if (loader)
         probe(&o, loader);
     else
-        put(&o, "error=the Vulkan driver did not load (see logcat, tag DAODroid)\n");
+        put(&o, "error=the Vulkan driver did not load (see logcat, tag XDroid360)\n");
     // The loader stays loaded: unloading a driver isn't safe on every phone.
     if (driver)
         (*env)->ReleaseStringUTFChars(env, driver_path, driver);
