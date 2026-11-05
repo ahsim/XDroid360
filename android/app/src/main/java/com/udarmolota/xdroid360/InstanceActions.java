@@ -150,24 +150,6 @@ final class InstanceActions {
     }
 
     /** Asks which game to take the shader cache from, then copies it. */
-    static void importShaderCache(Activity a, Instance to, List<Instance> all) {
-        List<Instance> others = new java.util.ArrayList<>();
-        for (Instance i : all) if (!i.id.equals(to.id) && i.titleId().equals(to.titleId())) others.add(i);
-        if (others.isEmpty()) {
-            Toast.makeText(a, R.string.cache_no_other, Toast.LENGTH_LONG).show();
-            return;
-        }
-        choose(a, R.string.cache_import_from, others, from -> {
-            try {
-                int n = copyShaderCache(from, to);
-                Toast.makeText(a, n > 0 ? a.getString(R.string.cache_imported, n, from.name)
-                        : a.getString(R.string.cache_up_to_date, to.name), Toast.LENGTH_LONG).show();
-            } catch (IOException e) {
-                Toast.makeText(a, e.toString(), Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
     /**
      * Puts the picked graphics preset in place before the game starts: presets/<id>.cfg copied
      * to options.preset.target (a file under game/ the game reads at boot). The game's own

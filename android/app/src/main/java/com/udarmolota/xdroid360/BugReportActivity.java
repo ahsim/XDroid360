@@ -7,8 +7,8 @@ import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.ArrayAdapter;
-import android.widget.CheckBox;
 import android.widget.Spinner;
 import android.widget.Toast;
 
@@ -36,15 +36,18 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * "Report a bug", as in Zomdroid: choose the game and what goes into the report (the game's
- * log, Android's log of this app, the settings, crash records; the device and build are always
- * in), then send it by email (the chooser lists mail apps only), or save it to a file and send
- * it from anywhere to the address shown.
+ * "Report a bug", as in Zomdroid: choose the game, then send the report by email (the chooser
+ * lists mail apps only), or save it to a file and send it from anywhere to the address shown.
+ * The report always holds the game's log, Android's log of this app, the settings, crash
+ * records, the device and the build. With more than one game the choice starts empty, so
+ * nobody sends another game's logs by accident.
  */
 public class BugReportActivity extends AppCompatActivity {
     private final List<Instance> instances = new ArrayList<>();
     private Spinner instance;
-    private CheckBox incLog, incLogcat, incConfig, incCrash;
+    /** Whether the first row is "Choose the game" (more than one game). */
+    private boolean chooseRow;
+    private View email, saveButton;
 
     private final ActivityResultLauncher<String> save =
             registerForActivityResult(new ActivityResultContracts.CreateDocument("application/zip"), uri -> {
@@ -66,22 +69,31 @@ public class BugReportActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         instances.addAll(Instance.list(this));
+        chooseRow = instances.size() > 1;
         List<String> names = new ArrayList<>();
+        if (chooseRow) names.add(getString(R.string.bug_report_pick_game));
         for (Instance i : instances) names.add(i.name + " — " + i.buildLabel());
         instance = findViewById(R.id.instance);
         ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, names);
         a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         instance.setAdapter(a);
-        String wanted = getIntent().getStringExtra(InstanceActivity.EXTRA_ID);
-        for (int i = 0; i < instances.size(); i++) if (instances.get(i).id.equals(wanted)) instance.setSelection(i);
+        email = findViewById(R.id.email);
+        saveButton = findViewById(R.id.save);
+        instance.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                updateButtons();
+            }
 
-        incLog = findViewById(R.id.inc_log);
-        incLogcat = findViewById(R.id.inc_logcat);
-        incConfig = findViewById(R.id.inc_config);
-        incCrash = findViewById(R.id.inc_crash);
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+                updateButtons();
+            }
+        });
+        updateButtons();
 
-        findViewById(R.id.email).setOnClickListener(v -> sendEmail());
-        findViewById(R.id.save).setOnClickListener(v -> save.launch("xdroid360_report_" + stamp() + ".zip"));
+        email.setOnClickListener(v -> sendEmail());
+        saveButton.setOnClickListener(v -> save.launch("xdroid360_report_" + stamp() + ".zip"));
         findViewById(R.id.copy).setOnClickListener(v -> {
             ClipboardManager cm = getSystemService(ClipboardManager.class);
             cm.setPrimaryClip(ClipData.newPlainText("e-mail", getString(R.string.bug_report_email)));
@@ -90,8 +102,15 @@ public class BugReportActivity extends AppCompatActivity {
     }
 
     private Instance selected() {
-        int i = instance.getSelectedItemPosition();
+        int i = instance.getSelectedItemPosition() - (chooseRow ? 1 : 0);
         return i >= 0 && i < instances.size() ? instances.get(i) : null;
+    }
+
+    /** Sending waits for a game to be chosen (with no games at all, the report has the device only). */
+    private void updateButtons() {
+        boolean ready = !chooseRow || selected() != null;
+        email.setEnabled(ready);
+        saveButton.setEnabled(ready);
     }
 
     private void sendEmail() {
@@ -104,50 +123,115 @@ public class BugReportActivity extends AppCompatActivity {
                 writeReport(out);
             }
             Uri attach = FileProvider.getUriForFile(this, getPackageName() + ".files", zip);
+            Instance game = selected();
+            String subject = "XDroid360 bug report" + (game != null ? ": " + game.name : "");
+            String body = (game != null ? "Game: " + game.name + " (" + game.buildLabel() + ")\n" : "")
+                    + deviceInfo() + "\n\nWhat happened:\n";
             Intent send = new Intent(Intent.ACTION_SEND)
                     .setType("application/zip")
                     .putExtra(Intent.EXTRA_EMAIL, new String[] { getString(R.string.bug_report_email) })
-                    .putExtra(Intent.EXTRA_SUBJECT, "XDroid360 bug report")
-                    .putExtra(Intent.EXTRA_TEXT, deviceInfo() + "\n\nWhat happened:\n")
+                    .putExtra(Intent.EXTRA_SUBJECT, subject)
+                    .putExtra(Intent.EXTRA_TEXT, body)
                     .putExtra(Intent.EXTRA_STREAM, attach)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            // Mail apps only: those that handle mailto: and also take this ACTION_SEND.
-            List<Intent> targets = new ArrayList<>();
-            for (ResolveInfo r : getPackageManager().queryIntentActivities(
-                    new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")), 0)) {
-                Intent t = new Intent(send).setPackage(r.activityInfo.packageName);
-                if (!getPackageManager().queryIntentActivities(t, 0).isEmpty()) targets.add(t);
-            }
-            if (targets.isEmpty()) {
-                Toast.makeText(this, R.string.bug_report_no_mail_app, Toast.LENGTH_LONG).show();
-                return;
-            }
-            Intent chooser = Intent.createChooser(targets.remove(0), getString(R.string.bug_report_send_email));
-            chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, targets.toArray(new Intent[0]));
-            startActivity(chooser);
+            pickMailApp(send);
         } catch (IOException e) {
             Toast.makeText(this, e.toString(), Toast.LENGTH_LONG).show();
         }
     }
 
+    /**
+     * Mail apps only, as in Zomdroid: the apps that handle mailto: and also take this ACTION_SEND,
+     * each started by its screen, not its package. Mail.ru has two screens that take the mail:
+     * one mails the player and ignores the address and the text, the other is a normal new
+     * letter; started by package it opened the first. Screens that mail "yourself" are skipped.
+     */
+    private void pickMailApp(Intent send) {
+        android.content.pm.PackageManager pm = getPackageManager();
+        List<String> packages = new ArrayList<>();
+        List<android.content.ComponentName> targets = new ArrayList<>();
+        List<CharSequence> labels = new ArrayList<>();
+        List<android.graphics.drawable.Drawable> icons = new ArrayList<>();
+        for (ResolveInfo r : pm.queryIntentActivities(new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")), 0)) {
+            String pkg = r.activityInfo.packageName;
+            if (packages.contains(pkg)) continue;
+            android.content.ComponentName target = null;
+            for (ResolveInfo s : pm.queryIntentActivities(new Intent(send).setPackage(pkg), 0)) {
+                if (s.activityInfo.name.toLowerCase(Locale.ROOT).contains("self")) continue;
+                target = new android.content.ComponentName(pkg, s.activityInfo.name);
+                break;
+            }
+            if (target == null) continue;
+            packages.add(pkg);
+            targets.add(target);
+            labels.add(r.activityInfo.applicationInfo.loadLabel(pm));
+            icons.add(r.activityInfo.applicationInfo.loadIcon(pm));
+        }
+        if (targets.isEmpty()) {
+            Toast.makeText(this, R.string.bug_report_no_mail_app, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (targets.size() == 1) {
+            launchMail(send, targets.get(0));
+            return;
+        }
+        float dp = getResources().getDisplayMetrics().density;
+        ArrayAdapter<CharSequence> rows = new ArrayAdapter<CharSequence>(this, android.R.layout.simple_list_item_1, labels) {
+            @Override
+            public View getView(int pos, View convert, android.view.ViewGroup parent) {
+                android.widget.TextView tv = (android.widget.TextView) super.getView(pos, convert, parent);
+                android.graphics.drawable.Drawable d = icons.get(pos);
+                int size = Math.round(36 * dp);
+                d.setBounds(0, 0, size, size);
+                tv.setCompoundDrawablesRelative(d, null, null, null);
+                tv.setCompoundDrawablePadding(Math.round(16 * dp));
+                tv.setPaddingRelative(Math.round(24 * dp), tv.getPaddingTop(), tv.getPaddingEnd(), tv.getPaddingBottom());
+                return tv;
+            }
+        };
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.bug_report_send_email)
+                .setAdapter(rows, (d, w) -> launchMail(send, targets.get(w)))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void launchMail(Intent send, android.content.ComponentName target) {
+        try {
+            startActivity(new Intent(send).setComponent(target));
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.bug_report_no_mail_app, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** A file in the report: no bigger (a game log stays far below; a runaway one is left out). */
+    private static final long MAX_FILE = 4L << 20;
+
     private void writeReport(OutputStream out) throws IOException {
         Instance i = selected();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
             put(zip, "device.txt", deviceInfo().getBytes(StandardCharsets.UTF_8));
-            // The last device check's results (DeviceCheck), one file per driver.
-            for (java.util.Map.Entry<String, byte[]> e : DeviceCheck.saved(this).entrySet()) put(zip, e.getKey(), e.getValue());
             if (i != null) {
                 put(zip, "instance.txt", (i.name + "\n" + i.buildLabel() + "\ndriver " + i.driver + ", sysmem " + i.sysmem
-                        + ", texture LOD " + i.textureLodBias + ", prerotate " + i.prerotate + "\n\n"
+                        + ", texture LOD " + i.textureLodBias + ", display " + i.hudMode + "\n\n"
                         + i.manifest.toString()).getBytes(StandardCharsets.UTF_8));
-                if (incLog.isChecked()) putFile(zip, "dao.log", new File(i.userdata(), "dao.log"));
-                if (incConfig.isChecked()) {
-                    putFile(zip, "config.toml", new File(i.userdata(), "config.toml"));
-                    putFile(zip, "env.txt", new File(i.userdata(), "env.txt"));
+                // The game's own log and settings, whatever it names them (dao.log, sod.log,
+                // config.toml, the game's own .toml), and the launcher's env.txt.
+                File[] files = i.userdata().listFiles();
+                if (files != null) {
+                    java.util.Arrays.sort(files);
+                    for (File f : files) {
+                        String n = f.getName().toLowerCase(Locale.ROOT);
+                        if (f.isFile() && f.length() <= MAX_FILE
+                                && (n.endsWith(".log") || n.endsWith(".toml") || n.equals("env.txt"))) {
+                            putFile(zip, f.getName(), f);
+                        }
+                    }
                 }
             }
-            if (incLogcat.isChecked()) put(zip, "logcat.txt", run("logcat", "-d", "-v", "time"));
-            if (incCrash.isChecked()) put(zip, "crash.txt", run("logcat", "-d", "-b", "crash", "-v", "time"));
+            // Android gives an app only its own log; the newest lines are the ones about the bug.
+            put(zip, "logcat.txt", run("logcat", "-d", "-v", "time", "-t", "5000"));
+            put(zip, "crash.txt", run("logcat", "-d", "-b", "crash", "-v", "time"));
         }
     }
 

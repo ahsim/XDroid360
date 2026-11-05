@@ -86,12 +86,13 @@ public class InstanceActivity extends AppCompatActivity {
             advanced.setVisibility(open ? View.VISIBLE : View.GONE);
             chevron.setRotation(open ? 180 : 0);
         });
-        MaterialSwitch prerotate = findViewById(R.id.prerotate);
-        prerotate.setChecked(instance.prerotate);
-        prerotate.setOnCheckedChangeListener((b, on) -> { instance.prerotate = on; save(); });
-        MaterialSwitch perf = findViewById(R.id.perf);
-        perf.setChecked(instance.perfOverlay);
-        perf.setOnCheckedChangeListener((b, on) -> { instance.perfOverlay = on; save(); });
+        android.widget.RadioGroup hud = findViewById(R.id.hud);
+        int[] hudIds = { R.id.hud_off, R.id.hud_fps, R.id.hud_full };
+        hud.check(hudIds[Math.max(0, Math.min(2, instance.hudMode))]);
+        hud.setOnCheckedChangeListener((g, checked) -> {
+            for (int i = 0; i < hudIds.length; i++) if (hudIds[i] == checked) instance.hudMode = i;
+            save();
+        });
         MaterialSwitch vibrate = findViewById(R.id.vibrate);
         vibrate.setChecked(instance.vibrateOnTouch);
         vibrate.setOnCheckedChangeListener((b, on) -> { instance.vibrateOnTouch = on; save(); });

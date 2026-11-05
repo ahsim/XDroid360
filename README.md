@@ -15,7 +15,7 @@ your own copy:
   `454108C0`, media ID `186A1115` (the English/Italian/Spanish edition, also disc 1 of its
   Ultimate Edition);
 - *State of Decay*: its folder from a console's storage (`584111E8`, with the game, DLC and
-  title update packages), as a `.zip` or as the folder.
+  title update packages), as a `.zip`.
 
 ## How to play
 
@@ -23,11 +23,11 @@ your own copy:
    [Releases](https://github.com/udarmolota/XDroid360/releases).
 2. **Copy your game to the phone**: a cable, a USB drive or a download, into the phone's own
    storage (a cloud drive's file can't be read in place).
-3. In the launcher, tap **+**, pick the disc image or `.zip` (or the game folder), check the
-   card (the game, its version, the space it needs) and tap **Build**. The phone builds the
-   game: about 6 minutes on a Galaxy S25, plus copying the game files. You can leave the
-   launcher meanwhile; the notification shows the progress and can cancel it. A build that
-   was stopped continues where it left off.
+3. In the launcher, tap **+**, pick the disc image or `.zip`, check the card (the game, its
+   version, the space it needs) and tap **Build**. Installing includes the static
+   recompilation of the game's code for the phone: 5–10 minutes, plus copying the game files.
+   You can leave the launcher meanwhile; the notification shows the progress and can cancel
+   it. A build that was stopped continues where it left off.
 4. Tap **Play**.
 
 The game is your own copy: nothing of it comes with this app.

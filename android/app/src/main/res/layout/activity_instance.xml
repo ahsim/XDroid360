@@ -177,18 +177,42 @@
                             android:text="@string/lod_ultra_low" />
                     </RadioGroup>
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/prerotate"
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/setting_prerotate" />
+                        android:layout_marginTop="12dp"
+                        android:text="@string/setting_hud"
+                        android:textAppearance="?attr/textAppearanceTitleSmall" />
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/perf"
+                    <RadioGroup
+                        android:id="@+id/hud"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/hud_off"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/setting_hud_off" />
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/hud_fps"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/setting_hud_fps" />
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/hud_full"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/setting_hud_full" />
+                    </RadioGroup>
+
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/setting_perf" />
+                        android:text="@string/setting_hud_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/vibrate"

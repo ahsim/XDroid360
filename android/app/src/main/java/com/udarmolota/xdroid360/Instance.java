@@ -35,9 +35,12 @@ final class Instance {
     JSONObject manifest; // the package's manifest.json (empty for the development build)
     String driver = DRIVER_BUILTIN;
     String sysmem = SYSMEM_AUTO;
-    int textureLodBias = 1;
-    boolean prerotate = true;
-    boolean perfOverlay = true;
+    // New instances start at the lowest texture detail: a phone's memory and bandwidth, not the
+    // console's (the choice stays in the settings).
+    int textureLodBias = 2;
+    /** The in-game display: nothing, the FPS counter, or the performance bar (as in Zomdroid). */
+    static final int HUD_OFF = 0, HUD_FPS = 1, HUD_FULL = 2;
+    int hudMode = HUD_OFF;
     boolean vibrateOnTouch = false;
     /** The frame rate picked, 0 for the package's default (options.frame_rate). */
     int frameRate = 0;
@@ -131,8 +134,7 @@ final class Instance {
             s.put("driver", driver);
             s.put("sysmem", sysmem);
             s.put("texture_lod_bias", textureLodBias);
-            s.put("prerotate", prerotate);
-            s.put("perf_overlay", perfOverlay);
+            s.put("hud_mode", hudMode);
             s.put("vibrate_on_touch", vibrateOnTouch);
             s.put("frame_rate", frameRate);
             s.put("preset", preset);
@@ -165,8 +167,9 @@ final class Instance {
                 driver = s.optString("driver", driver);
                 sysmem = s.optString("sysmem", sysmem);
                 textureLodBias = s.optInt("texture_lod_bias", textureLodBias);
-                prerotate = s.optBoolean("prerotate", prerotate);
-                perfOverlay = s.optBoolean("perf_overlay", perfOverlay);
+                // Before hud_mode: the performance bar was a switch, on unless turned off.
+                hudMode = s.has("hud_mode") ? s.optInt("hud_mode", hudMode)
+                        : s.optBoolean("perf_overlay", true) ? HUD_FULL : HUD_OFF;
                 vibrateOnTouch = s.optBoolean("vibrate_on_touch", vibrateOnTouch);
                 frameRate = s.optInt("frame_rate", frameRate);
                 preset = s.optString("preset", preset);

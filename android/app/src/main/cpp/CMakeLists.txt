@@ -63,13 +63,6 @@ add_library(vkdriverhook SHARED vkdriverhook.c)
 target_compile_options(vkdriverhook PRIVATE -fvisibility=hidden -Wall -Wextra)
 target_link_options(vkdriverhook PRIVATE -Wl,-z,global -Wl,-z,max-page-size=16384)
 
-# The launcher's device check (DeviceCheck.java): what the phone's Vulkan offers Xenia, through
-# the same driver choice as the game. In both APKs.
-add_library(daoprobe SHARED vk_probe.c vulkan_private_loader.c)
-target_compile_options(daoprobe PRIVATE -fvisibility=hidden -Wall -Wextra -Wno-missing-field-initializers)
-target_link_libraries(daoprobe PRIVATE linkernsbypass android log dl)
-target_link_options(daoprobe PRIVATE -Wl,-z,max-page-size=16384)
-
 # ---------------------------------------------------------------- the game library
 
 if (DAO_LAUNCHER_ONLY)

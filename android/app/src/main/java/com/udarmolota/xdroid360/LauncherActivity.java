@@ -203,10 +203,8 @@ public class LauncherActivity extends AppCompatActivity {
         else if (id == R.id.nav_saves_import) InstanceActions.choose(this, R.string.saves_import, instances,
                 i -> pick(i, InstanceActions::installSaves));
         else if (id == R.id.nav_saves_export) InstanceActions.choose(this, R.string.saves_export, instances, this::exportSavesOf);
-        else if (id == R.id.nav_cache) InstanceActions.choose(this, R.string.cache_import_to, instances,
-                i -> InstanceActions.importShaderCache(this, i, instances));
-        else if (id == R.id.nav_pad) startActivity(new Intent(this, PadEditorActivity.class));
-        else if (id == R.id.nav_check) startActivity(new Intent(this, DeviceCheckActivity.class));
+        else if (id == R.id.nav_pad) InstanceActions.choose(this, R.string.nav_pad_editor, instances,
+                i -> startActivity(new Intent(this, PadEditorActivity.class).putExtra(InstanceActivity.EXTRA_ID, i.id)));
         else if (id == R.id.nav_bug) bugReport(instances.isEmpty() ? null : instances.get(0));
         else if (id == R.id.nav_about) showAbout();
         else return false;
@@ -232,7 +230,7 @@ public class LauncherActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
-    /** Which pick the games this launcher can build need: the file picker, or a choice of file or folder. */
+    /** "Add game": the game's name, then its file. */
     private void addGame() {
         List<Recipe> games = Toolchain.profiles(this);
         if (games.isEmpty() || !Toolchain.present(this)) {
@@ -240,20 +238,16 @@ public class LauncherActivity extends AppCompatActivity {
                     .setPositiveButton(android.R.string.ok, null).show();
             return;
         }
-        // Any game comes as a file (a disc image, or either game in a .zip); a game whose
-        // recipe picks a folder can come as that folder too (a console's storage).
-        boolean trees = false;
-        for (Recipe r : games) trees |= "tree".equals(r.pick());
-        if (!trees) {
+        // Only the games' names: every game comes as a file (a disc image, or a .zip), and the
+        // card after the pick says which game it is. (A folder pick, pickTree, is kept in code.)
+        if (games.size() == 1) {
             pickImage.launch(new String[] { "*/*" });
             return;
         }
+        String[] names = new String[games.size()];
+        for (int i = 0; i < names.length; i++) names[i] = games.get(i).title();
         new MaterialAlertDialogBuilder(this).setTitle(R.string.launcher_add)
-                .setItems(new String[] { getString(R.string.launcher_add_file), getString(R.string.launcher_add_folder) },
-                        (d, which) -> {
-                            if (which == 1) pickTree.launch(null);
-                            else pickImage.launch(new String[] { "*/*" });
-                        })
+                .setItems(names, (d, which) -> pickImage.launch(new String[] { "*/*" }))
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
     }
@@ -271,8 +265,18 @@ public class LauncherActivity extends AppCompatActivity {
     private void showAbout() {
         new MaterialAlertDialogBuilder(this).setTitle(R.string.app_name).setMessage(R.string.about_text)
                 .setPositiveButton(android.R.string.ok, null)
+                .setNegativeButton(R.string.about_licenses, (d, w) -> showLicenses())
                 .setNeutralButton("GitHub", (d, w) -> startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://github.com/udarmolota/XDroid360"))))
+                .show();
+    }
+
+    /** The third-party components and their licences (NOTICE.md; the full texts are in the
+     *  licenses/ folders of the kit and the game profiles the APK carries). */
+    private void showLicenses() {
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.about_licenses)
+                .setMessage(R.string.about_licenses_text)
+                .setPositiveButton(android.R.string.ok, null)
                 .show();
     }
 

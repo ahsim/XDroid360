@@ -55,12 +55,6 @@
             android:name=".BugReportActivity"
             android:theme="@style/LauncherTheme"
             android:exported="false" />
-        <!-- Its own process: the device check loads Vulkan drivers, which may crash. -->
-        <activity
-            android:name=".DeviceCheckActivity"
-            android:process=":probe"
-            android:theme="@style/LauncherTheme"
-            android:exported="false" />
         <activity
             android:name=".PadEditorActivity"
             android:screenOrientation="landscape"

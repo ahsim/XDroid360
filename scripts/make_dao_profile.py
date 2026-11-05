@@ -9,6 +9,7 @@ layout of the recipe format (SD1/toolchain/RECIPE_FORMAT_DRAFT.md, format 2):
     include/                  what the phone compiles the generated code with: mmio_hook.h,
                               SIMDe, the build descriptor (build_info*)
     xr/                       XenonRecomp's config template, switch tables, ppc_context.h
+    licenses/                 the full licence text of each component above
 
 The archives come from the Android build of the game library (build/tool/android, NDK 27.3,
 the launcher's SDL 3.4.18), with debug info stripped. The phone translates the game's code
@@ -43,6 +44,74 @@ TITLE_ID = "454108C0"
 NOT_DEPS = {"libdaodroid-runtime.a", "libdaobuildinfo.a", "libdaoppc.a"}
 # P0 on the S25: this unit alone takes about 120 s, so it starts first.
 COST_HINTS = {"ppc_recomp.17.cpp": 120}
+
+XE_TP = RECOMP / "tools" / "xenia-canary" / "third_party"
+XENON = RECOMP / "tools" / "XenonRecomp"
+# What the profile's archives and headers hold, and each one's licence text: licenses/<name>.
+# A file whose licence is only its source's opening comment gives that comment (header=True).
+LICENSES = [
+    ("XDroid360.txt", ROOT / "LICENSE", "the front end (android/app/src/main/cpp)", False),
+    ("DAORecomp.txt", RECOMP / "LICENSE", "the runtime (recomp/DAORecomp)", False),
+    ("Xenia.txt", RECOMP / "xenia" / "LICENSE", "the GPU, UI and base code", False),
+    ("XenonRecomp.txt", XENON / "LICENSE.md", "XenonUtils (XEX loading), ppc_context.h", False),
+    ("SIMDe.txt", XENON / "thirdparty" / "simde" / "COPYING", "include/simde", False),
+    ("libmspack.txt", XENON / "thirdparty" / "libmspack" / "libmspack" / "COPYING.LIB", "LZX decompression (LGPL 2.1)", False),
+    ("tiny-AES-c.txt", XENON / "thirdparty" / "tiny-AES-c" / "unlicense.txt", "AES", False),
+    ("TinySHA1.txt", XENON / "thirdparty" / "TinySHA1" / "TinySHA1.hpp", "SHA-1", True),
+    ("FFmpeg.txt", XE_TP / "FFmpeg" / "COPYING.LGPLv2.1", "avcodec and avutil (LGPL 2.1+)", False),
+    ("glslang.txt", XE_TP / "glslang" / "LICENSE.txt", "SPIR-V builder", False),
+    ("fmt.txt", XE_TP / "fmt" / "LICENSE", "formatting", False),
+    ("xxHash.txt", XE_TP / "xxhash" / "LICENSE", "hashing", False),
+    ("Snappy.txt", XE_TP / "snappy" / "COPYING", "compression", False),
+    ("Dear-ImGui.txt", XE_TP / "imgui" / "LICENSE.txt", "UI", False),
+    ("toml++.txt", XE_TP / "tomlplusplus" / "LICENSE", "settings files", False),
+    ("Vulkan-Headers.txt", XE_TP / "Vulkan-Headers" / "LICENSE.md", "Vulkan headers", False),
+    ("VulkanMemoryAllocator.txt", XE_TP / "VulkanMemoryAllocator" / "LICENSE.txt", "GPU memory", False),
+    ("FidelityFX-CAS.txt", XE_TP / "FidelityFX-CAS" / "LICENSE.txt", "sharpening shader", False),
+    ("FidelityFX-FSR.txt", XE_TP / "FidelityFX-FSR" / "license.txt", "upscaling shader", False),
+    ("DXBCChecksum.txt", XE_TP / "dxbc" / "DXBCChecksum.cpp", "shader checksum (AMD, RSA MD5)", True),
+    ("SDL.txt", RECOMP / "thirdparty" / "SDL" / "LICENSE.txt", "SDL 3 headers (the library is the launcher's)", False),
+    ("linkernsbypass.txt", ROOT / "android" / "app" / "src" / "main" / "cpp" / "linkernsbypass" / "LICENSE", "linker namespaces", False),
+]
+
+
+def opening_comment(path):
+    """A source file's leading comment lines: the licence of a library that has no licence file."""
+    lines = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if lines and not line.strip().startswith(("/", "*", "**")) and line.strip():
+            break
+        lines.append(line)
+        if len(lines) > 120:
+            break
+    return "\n".join(lines) + "\n"
+
+
+def git_head(path):
+    r = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True)
+    return r.stdout.strip() or "unknown"
+
+
+def write_licenses(folder):
+    """licenses/: each component's full licence text, and README.txt naming them (with
+    FFmpeg's exact source, as the LGPL asks)."""
+    folder.mkdir()
+    rows = []
+    for name, src, what, header in LICENSES:
+        if not src.is_file():
+            sys.exit(f"No licence text at {src}")
+        text = opening_comment(src) if header else src.read_text(encoding="utf-8", errors="replace")
+        (folder / name).write_text(text, encoding="utf-8", newline="\n")
+        rows.append(f"  {name:28} {what}")
+    ffmpeg = XE_TP / "FFmpeg"
+    version = (ffmpeg / "RELEASE").read_text(encoding="utf-8").strip() if (ffmpeg / "RELEASE").is_file() else "?"
+    readme = ("Licences of what this profile's archives and headers hold (DAO's game library is linked\n"
+              "from them on the phone). No game code or data is in the profile.\n\n" + "\n".join(rows) + "\n\n"
+              f"FFmpeg {version}, the has207/FFmpeg fork, commit {git_head(ffmpeg)}:\n"
+              "  source: https://github.com/has207/FFmpeg (configured as LGPL: no GPL parts).\n"
+              "  lib/libdao-deps.a holds its objects, so the game library can be linked again with\n"
+              "  another build of avcodec/avutil.\n")
+    (folder / "README.txt").write_text(readme, encoding="utf-8", newline="\n")
 
 
 def exe(name):
@@ -210,6 +279,8 @@ def stage(build, kit, out):
     (xr / "DAO.toml.in").write_text(toml_template(), encoding="utf-8", newline="\n")
     shutil.copy2(RECOMP / "config" / "DAO_switch_tables.toml", xr / "DAO_switch_tables.toml")
     shutil.copy2(RECOMP / "tools" / "XenonRecomp" / "XenonUtils" / "ppc_context.h", xr / "ppc_context.h")
+
+    write_licenses(out / "licenses")
 
     r = recipe(kit, sha256(xex))
     (out / "recipe.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8", newline="\n")

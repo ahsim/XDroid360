@@ -23,7 +23,7 @@ public class PadEditorActivity extends Activity {
         super.onCreate(savedInstanceState);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(40, 14, 14));
-        pad = new VirtualPadView(this);
+        pad = new VirtualPadView(this, getIntent().getStringExtra(InstanceActivity.EXTRA_ID));
         pad.sendsToGame = false;
         root.addView(pad, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 

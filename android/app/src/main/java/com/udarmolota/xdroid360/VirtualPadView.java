@@ -91,6 +91,14 @@ public class VirtualPadView extends View {
     private float unit;
 
     public VirtualPadView(Context context) {
+        this(context, null);
+    }
+
+    /**
+     * The layout of one instance (two instances of the same game can differ). Until it is edited
+     * it starts from the layout all instances shared before.
+     */
+    public VirtualPadView(Context context, String instanceId) {
         super(context);
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setColor(0x80CCCCCC);
@@ -108,7 +116,21 @@ public class VirtualPadView extends View {
         editStroke.setStyle(Paint.Style.STROKE);
         editStroke.setColor(0xC0FFD040);
         for (int i = 0; i < MAX_POINTERS; i++) element[i] = NONE;
-        prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        prefs = layoutPrefs(context, instanceId);
+    }
+
+    private static SharedPreferences layoutPrefs(Context context, String instanceId) {
+        SharedPreferences shared = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (instanceId == null) return shared;
+        SharedPreferences own = context.getSharedPreferences(PREFS + "_" + instanceId, Context.MODE_PRIVATE);
+        if (own.getAll().isEmpty() && !shared.getAll().isEmpty()) {
+            SharedPreferences.Editor e = own.edit();
+            for (java.util.Map.Entry<String, ?> kv : shared.getAll().entrySet()) {
+                if (kv.getValue() instanceof Float) e.putFloat(kv.getKey(), (Float) kv.getValue());
+            }
+            e.apply();
+        }
+        return own;
     }
 
     /** A light tick when a button or the d-pad is pressed (a per-instance setting); off by default. */

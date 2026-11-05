@@ -43,48 +43,6 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/bug_report_what"
-                android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/inc_log"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/bug_report_inc_log" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/inc_logcat"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/bug_report_inc_logcat" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/inc_config"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/bug_report_inc_config" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/inc_crash"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/bug_report_inc_crash" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/bug_report_always"
-                android:textAppearance="?attr/textAppearanceBodySmall" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:text="@string/bug_report_steps"
                 android:textAppearance="?attr/textAppearanceBodyMedium" />

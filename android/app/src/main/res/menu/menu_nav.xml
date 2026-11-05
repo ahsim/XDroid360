@@ -18,19 +18,11 @@
             android:icon="@drawable/ic_save"
             android:title="@string/saves_import" />
         <item
-            android:id="@+id/nav_cache"
-            android:icon="@drawable/ic_memory"
-            android:title="@string/cache_import" />
-        <item
             android:id="@+id/nav_pad"
             android:icon="@drawable/ic_gamepad"
             android:title="@string/nav_pad_editor" />
     </group>
     <group android:id="@+id/group_help">
-        <item
-            android:id="@+id/nav_check"
-            android:icon="@drawable/ic_memory"
-            android:title="@string/check_title" />
         <item
             android:id="@+id/nav_bug"
             android:icon="@drawable/ic_bug"

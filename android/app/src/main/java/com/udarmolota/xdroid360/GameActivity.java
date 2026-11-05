@@ -118,7 +118,7 @@ public class GameActivity extends SDLActivity {
         super.onCreate(savedInstanceState);
         // The on-screen gamepad over SDL's surface (mLayout holds the surface).
         if (mLayout != null) {
-            VirtualPadView pad = new VirtualPadView(this);
+            VirtualPadView pad = new VirtualPadView(this, current != null ? current.id : null);
             pad.setVibrateOnTouch(current != null && current.vibrateOnTouch);
             mLayout.addView(pad, new android.view.ViewGroup.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
@@ -188,15 +188,32 @@ public class GameActivity extends SDLActivity {
         });
     }
 
-    // The performance bar (fps, CPU, GPU, RAM, thermal), from the launchers; userdata/env.txt
-    // DAO_PERF_OVERLAY=0 hides it.
+    // The in-game display (Instance.hudMode, as in Zomdroid): the "FPS: XX" counter, or the
+    // performance bar (fps, CPU, GPU, RAM, thermal) from the launchers. Both count the frames the
+    // game presented. userdata/env.txt DAO_PERF_OVERLAY=0 hides either.
     private static native long nativeGetPresentedFrames();
 
+    private android.widget.TextView fpsText;
+    private long fpsLastCount = -1, fpsLastTimeMs;
     private PerfOverlayView perfView;
     private PerfSampler perfSampler;
     private HandlerThread perfThread;
     private Handler perfHandler;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+
+    private final Runnable fpsTick = new Runnable() {
+        @Override public void run() {
+            if (fpsText == null || perfHandler == null) return;
+            long frames = nativeGetPresentedFrames(), now = android.os.SystemClock.elapsedRealtime();
+            if (fpsLastCount >= 0 && now > fpsLastTimeMs) {
+                final long fps = Math.round((frames - fpsLastCount) * 1000.0 / (now - fpsLastTimeMs));
+                uiHandler.post(() -> { if (fpsText != null) fpsText.setText("FPS: " + fps); });
+            }
+            fpsLastCount = frames;
+            fpsLastTimeMs = now;
+            perfHandler.postDelayed(this, 1000);
+        }
+    };
 
     private final Runnable perfTick = new Runnable() {
         @Override public void run() {
@@ -210,10 +227,29 @@ public class GameActivity extends SDLActivity {
     private void setUpPerfOverlay() {
         // getArguments (the game's env) runs later, on SDL's thread: read env.txt here too.
         applyEnvFile(new File(new File(installRoot(this), "userdata"), "env.txt"));
-        if ("0".equals(envOverrides.get("DAO_PERF_OVERLAY")) || (current != null && !current.perfOverlay)) {
+        int mode = current != null ? current.hudMode : Instance.HUD_FULL;
+        if ("0".equals(envOverrides.get("DAO_PERF_OVERLAY")) || mode == Instance.HUD_OFF) {
             return;
         }
         float dp = getResources().getDisplayMetrics().density;
+        perfThread = new HandlerThread("PerfOverlay");
+        perfThread.start();
+        perfHandler = new Handler(perfThread.getLooper());
+        if (mode == Instance.HUD_FPS) {
+            fpsText = new android.widget.TextView(this);
+            fpsText.setTextColor(0xFFFFFFFF);
+            fpsText.setTextSize(14);
+            fpsText.setShadowLayer(3 * dp, 0, 0, 0xFF000000);
+            android.widget.RelativeLayout.LayoutParams fl = new android.widget.RelativeLayout.LayoutParams(
+                    android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT);
+            fl.addRule(android.widget.RelativeLayout.ALIGN_PARENT_TOP);
+            fl.addRule(android.widget.RelativeLayout.ALIGN_PARENT_LEFT);
+            fl.setMargins(Math.round(8 * dp), Math.round(4 * dp), 0, 0);
+            mLayout.addView(fpsText, fl); // not clickable: touches reach the pad underneath
+            perfHandler.postDelayed(fpsTick, 1000);
+            return;
+        }
         perfView = new PerfOverlayView(this, "VK");
         // SDL's root layout is a RelativeLayout: centre by its rule, not by gravity.
         android.widget.RelativeLayout.LayoutParams lp = new android.widget.RelativeLayout.LayoutParams(
@@ -224,9 +260,6 @@ public class GameActivity extends SDLActivity {
         lp.setMargins(0, Math.round(4 * dp), 0, 0);
         mLayout.addView(perfView, lp);   // not clickable: touches reach the pad underneath
         perfSampler = new PerfSampler(this);
-        perfThread = new HandlerThread("PerfOverlay");
-        perfThread.start();
-        perfHandler = new Handler(perfThread.getLooper());
         perfHandler.postDelayed(perfTick, 1000);
     }
 
@@ -287,7 +320,8 @@ public class GameActivity extends SDLActivity {
         File config = new File(current.userdata(), "config.toml");
         try {
             XeniaConfig.set(config, "dao_texture_lod_bias", String.valueOf(current.textureLodBias));
-            XeniaConfig.set(config, "dao_present_prerotate", current.prerotate ? "true" : "false");
+            // Always: it saves GPU work, and the plain scaling it uses looks the same on a phone.
+            XeniaConfig.set(config, "dao_present_prerotate", "true");
             org.json.JSONObject frameRate = current.option("frame_rate");
             String[] key = frameRate != null ? frameRate.optString("config").split("\\.", 2) : new String[0];
             if (key.length == 2 && current.frameRateToUse() > 0) {
@@ -302,7 +336,7 @@ public class GameActivity extends SDLActivity {
             Log.w(TAG, "preset: " + e);
         }
         Log.i(TAG, "Instance " + current.id + ": driver " + current.driver + ", sysmem " + current.sysmem
-                + ", texture LOD " + current.textureLodBias + ", prerotate " + current.prerotate
+                + ", texture LOD " + current.textureLodBias + ", display " + current.hudMode
                 + (current.option("frame_rate") != null ? ", frame rate " + current.frameRateToUse() : "")
                 + (current.option("preset") != null ? ", preset " + (current.preset.isEmpty() ? "game's own" : current.preset) : ""));
     }
@@ -315,7 +349,7 @@ public class GameActivity extends SDLActivity {
         return chosenDriver(this, current, install);
     }
 
-    /** As above, for an instance (null: the dev entry); also the device check's (DeviceCheck). */
+    /** As above, for an instance (null: the dev entry). */
     static File chosenDriver(Context context, Instance current, File install) {
         String choice = current != null ? current.driver : Instance.DRIVER_CUSTOM;
         if (Instance.DRIVER_SYSTEM.equals(choice)) {
