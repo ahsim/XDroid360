@@ -11,8 +11,8 @@ chip is emulated on Vulkan.
 > app or is stored here.
 
 > [!WARNING]
-> **XDroid360 is in beta (0.1.0).** It is made for and tested on **Snapdragon flagships**. Other
-> phones may work, but nobody has tried them yet. Back up your saves before you play (the side menu
+> **XDroid360 is in alpha (0.1.0).** It is tested on **Snapdragon flagships**. Other phones may
+> work, but nobody has tried them yet. Back up your saves before you play (the side menu
 > has **Export saves** for that).
 
 ## Download only from GitHub
