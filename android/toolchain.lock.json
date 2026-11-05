@@ -1,0 +1,26 @@
+{
+  "comment": "What the APK takes from other repositories' releases, by exact asset and SHA-256 (scripts/fetch_toolchain.py). Change only to a new release, with its published hash.",
+  "assets": [
+    {
+      "repo": "udarmolota/xdroid360-toolchain",
+      "tag": "v1.0.0",
+      "asset": "xdroid360-jnilibs-arm64-v8a-v1.0.0.zip",
+      "sha256": "",
+      "unpack": "jniLibs"
+    },
+    {
+      "repo": "udarmolota/xdroid360-toolchain",
+      "tag": "v1.0.0",
+      "asset": "xdroid360-kit-v1.0.0.zip",
+      "sha256": "",
+      "as": "kit.zip"
+    },
+    {
+      "repo": "udarmolota/SoDRecomp",
+      "tag": "profile-sod-1",
+      "asset": "xdroid360-profile-sod-1.zip",
+      "sha256": "",
+      "as": "games/sod.zip"
+    }
+  ]
+}

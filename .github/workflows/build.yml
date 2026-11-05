@@ -1,11 +1,16 @@
-name: Build XDroid360 launcher APK
+name: Build XDroid360
 
-# The launcher APK only (the "launcher" flavor): no game code, so it can be built and published
-# here. The game library comes in each player's own game package, made on their PC.
+# The player's APK: the launcher with everything it needs to build the games on the phone.
+#   - DAO's game profile (dao.zip) is built here, from DAORecomp's runtime (the recomp fork) and
+#     profiles/dao (no game code or data: scripts/make_dao_profile.py, XDROID360_PROFILE_BUILD).
+#   - The on-phone toolchain (clang, lld, XenonRecomp, the STFS extractor), the kit and State of
+#     Decay's profile come from their own repositories' releases, by the exact assets and SHA-256
+#     values pinned in android/toolchain.lock.json (scripts/fetch_toolchain.py).
+# An APK without them can't build any game, so none is published.
 #
 # Signing: the release APK is signed with the release key when the repository's secrets hold it
 # (Settings > Secrets and variables > Actions):
-#   RELEASE_KEYSTORE_BASE64  the key store file, base64-encoded
+#   RELEASE_KEYSTORE_BASE64  the key store file (.p12), base64-encoded
 #   RELEASE_STORE_PASSWORD   its password
 #   RELEASE_KEY_ALIAS        the key's alias
 #   RELEASE_KEY_PASSWORD     the key's password
@@ -35,19 +40,8 @@ jobs:
           VERSION_NAME=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' android/app/build.gradle | head -n 1)
           test -n "$VERSION_NAME"
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-
-      # SDL3 isn't in DAORecomp's git: its installer fetches it (recomp/installer/deps.py).
-      # The same pinned commit here.
-      - name: Fetch SDL3
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDL_COMMIT=$(grep -A1 '"thirdparty/SDL"' recomp/installer/deps.py | grep -oE '[0-9a-f]{40}')
-          test -n "$SDL_COMMIT"
-          git init -q recomp/thirdparty/SDL
-          git -C recomp/thirdparty/SDL fetch -q --depth 1 https://github.com/libsdl-org/SDL.git "$SDL_COMMIT"
-          git -C recomp/thirdparty/SDL checkout -q FETCH_HEAD
-          echo "SDL $SDL_COMMIT"
+          PROFILE=$(python3 -c 'import re;print(re.search(r"VERSION = \"(dao-[0-9]+)\"", open("scripts/make_dao_profile.py").read()).group(1))')
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -61,7 +55,33 @@ jobs:
           packages: platform-tools
 
       - name: Install NDK and CMake
-        run: sdkmanager "ndk;27.3.13750724" "cmake;3.22.1"
+        shell: bash
+        run: |
+          sdkmanager "ndk;27.3.13750724" "cmake;3.22.1"
+          NDK="$ANDROID_SDK_ROOT/ndk/27.3.13750724"
+          echo "NDK=$NDK" >> "$GITHUB_ENV"
+          # The SDK's CMake and Ninja, and the NDK's LLVM (llvm-ar, llvm-strip) for the profile.
+          echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> "$GITHUB_PATH"
+          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      # DAORecomp's pinned sources (Xenia's third-party code, XenonRecomp, SDL), as its installer
+      # checks them out, and XenonRecomp patched.
+      - name: Fetch the build's sources
+        run: python3 -I scripts/fetch_build_sources.py
+
+      - name: Fetch the toolchain and State of Decay's profile
+        run: python3 -I scripts/fetch_toolchain.py --out build/toolchain
+
+      - name: Build DAO's game profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -G Ninja -S android/app/src/main/cpp -B build/profile-android \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release -DXDROID360_PROFILE_BUILD=ON
+          python3 -I scripts/make_dao_profile.py --build build/profile-android --kit build/toolchain/kit --out build/profile
+          sha256sum build/profile/dao.zip | tee build/profile/dao.zip.sha256
 
       # The key store goes to the runner's temp folder, never into the workspace.
       - name: Set up release signing
@@ -85,28 +105,49 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > android/keystore.properties
 
-      - name: Build launcher APKs
+      - name: Build the launcher APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleLauncherDebug assembleLauncherRelease
+          ./gradlew assembleLauncherRelease -Pxdroid360.toolchain="$GITHUB_WORKSPACE/build/toolchain"
 
       - name: Remove the key store
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore" android/keystore.properties
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: xdroid360-launcher-debug-${{ steps.app_version.outputs.name }}
-          path: android/app/build/outputs/apk/launcher/debug/xdroid360-launcher-debug-${{ steps.app_version.outputs.name }}.apk
-          retention-days: 30
+      # The APK must carry the toolchain and both profiles, or it can't build a game.
+      - name: Check the APK's contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/launcher/release/xdroid360-launcher-release-${{ steps.app_version.outputs.name }}.apk
+          LIST=$(unzip -l "$APK")
+          for f in lib/arm64-v8a/libclang.so lib/arm64-v8a/liblld.so lib/arm64-v8a/libxenonrecomp.so \
+                   lib/arm64-v8a/libstfsextract.so lib/arm64-v8a/libSDL3.so assets/kit.zip \
+                   assets/games/dao.zip assets/games/sod.zip; do
+            echo "$LIST" | grep -q " $f\$" || { echo "missing in the APK: $f"; exit 1; }
+          done
+          ls -l "$APK"
 
-      - name: Upload release APK
+      - name: Upload the APK
         uses: actions/upload-artifact@v4
         with:
           name: xdroid360-launcher-release-${{ steps.app_version.outputs.name }}
           path: android/app/build/outputs/apk/launcher/release/xdroid360-launcher-release-${{ steps.app_version.outputs.name }}.apk
+          retention-days: 30
+
+      # DAO's profile on its own (xdroid360-profile-<version>.zip), for the release page.
+      - name: Upload DAO's profile
+        shell: bash
+        run: |
+          cp build/profile/dao.zip "build/profile/xdroid360-profile-${{ steps.app_version.outputs.profile }}.zip"
+          (cd build/profile && sha256sum "xdroid360-profile-${{ steps.app_version.outputs.profile }}.zip" > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xdroid360-profile-${{ steps.app_version.outputs.profile }}
+          path: |
+            build/profile/xdroid360-profile-${{ steps.app_version.outputs.profile }}.zip
+            build/profile/SHA256SUMS
           retention-days: 30
 
       # Who signed the release APK (the release key, or Android Debug without the secrets).
@@ -116,5 +157,4 @@ jobs:
         shell: bash
         run: |
           APKSIGNER=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -n 1)
-          echo "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/launcher/release/xdroid360-launcher-release-${{ steps.app_version.outputs.name }}.apk

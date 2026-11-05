@@ -35,8 +35,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECOMP = ROOT / "recomp"
+# DAORecomp's own tools on this PC; elsewhere (GitHub's CI) the ones on PATH (the NDK's LLVM).
 LLVM = RECOMP / "tools" / "llvm" / "bin"
-NINJA = RECOMP / "tools" / "ninja" / "ninja.exe"
+NINJA = RECOMP / "tools" / "ninja" / ("ninja.exe" if os.name == "nt" else "ninja")
 DEFAULT_KIT = ROOT.parent / "SD1" / "toolchain" / "out" / "kit"
 VERSION = "dao-1"
 TITLE_ID = "454108C0"
@@ -117,7 +118,8 @@ def write_licenses(folder):
 
 
 def exe(name):
-    return str(LLVM / (name + (".exe" if os.name == "nt" else "")))
+    local = LLVM / (name + (".exe" if os.name == "nt" else ""))
+    return str(local) if local.is_file() else name
 
 
 def sha256(path):
@@ -285,7 +287,7 @@ def abi_version():
 def stage(build, kit, out):
     libs = link_libraries(build)
     targets = ["dao-front"] + libs
-    subprocess.run([str(NINJA), "-C", str(build)] + targets, check=True)
+    subprocess.run([str(NINJA) if NINJA.is_file() else "ninja", "-C", str(build)] + targets, check=True)
     deps = [build / l for l in libs if Path(l).name not in NOT_DEPS]
     runtime = [build / l for l in libs if Path(l).name == "libdaodroid-runtime.a"]
     if not runtime:
