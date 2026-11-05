@@ -51,3 +51,5 @@ install/
 
 # The launcher's built-in Vulkan driver (Mesa Turnip, MIT; see NOTICE.md) ships in the repository, as in Zomdroid.
 !android/app/src/main/jniLibs/arm64-v8a/libvulkan_turnip_gen8.so
+# Internal notes and runbooks: kept on this PC, never published.
+docs/

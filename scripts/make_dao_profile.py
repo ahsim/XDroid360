@@ -41,10 +41,13 @@ DEFAULT_KIT = ROOT.parent / "SD1" / "toolchain" / "out" / "kit"
 VERSION = "dao-1"
 TITLE_ID = "454108C0"
 # Linked whole into dao-game, or compiled on the phone: not in dao-deps.
-NOT_DEPS = {"libdaodroid-runtime.a", "libdaobuildinfo.a", "libdaoppc.a"}
+# libdxbc.a: Xenia's DXBC checksum (AMD, no licence grant) is D3D12-only: the Vulkan build never
+# keeps it, so it stays out of the profile (the link checks that under --no-undefined).
+NOT_DEPS = {"libdaodroid-runtime.a", "libdaobuildinfo.a", "libdaoppc.a", "libdxbc.a"}
 # P0 on the S25: this unit alone takes about 120 s, so it starts first.
 COST_HINTS = {"ppc_recomp.17.cpp": 120}
 
+INPUTS = ROOT / "profiles" / "dao"
 XE_TP = RECOMP / "tools" / "xenia-canary" / "third_party"
 XENON = RECOMP / "tools" / "XenonRecomp"
 # What the profile's archives and headers hold, and each one's licence text: licenses/<name>.
@@ -69,7 +72,6 @@ LICENSES = [
     ("VulkanMemoryAllocator.txt", XE_TP / "VulkanMemoryAllocator" / "LICENSE.txt", "GPU memory", False),
     ("FidelityFX-CAS.txt", XE_TP / "FidelityFX-CAS" / "LICENSE.txt", "sharpening shader", False),
     ("FidelityFX-FSR.txt", XE_TP / "FidelityFX-FSR" / "license.txt", "upscaling shader", False),
-    ("DXBCChecksum.txt", XE_TP / "dxbc" / "DXBCChecksum.cpp", "shader checksum (AMD, RSA MD5)", True),
     ("SDL.txt", RECOMP / "thirdparty" / "SDL" / "LICENSE.txt", "SDL 3 headers (the library is the launcher's)", False),
     ("linkernsbypass.txt", ROOT / "android" / "app" / "src" / "main" / "cpp" / "linkernsbypass" / "LICENSE", "linker namespaces", False),
 ]
@@ -126,17 +128,49 @@ def sha256(path):
     return h.hexdigest()
 
 
+# The static libraries the game library links, as a build of the app's CMake names them. A
+# profile build (-DXDROID360_PROFILE_BUILD=ON) has no game library to read them from; a full build's
+# link line is checked against this list, so it can't drift.
+PROFILE_LIBS = [
+    "runtime/libdaodroid-runtime.a", "liblinkernsbypass.a", "runtime/libXenonUtils.a",
+    "xenia-vulkan/libxenia-gpu-vulkan.a", "xenia-vulkan/libxenia-gpu.a", "xenia-vulkan/libglslang-spirv.a",
+    "xenia-vulkan/libxxhash.a", "xenia-vulkan/libsnappy.a",
+    "xenia-vulkan/libxenia-ui-vulkan.a", "xenia-vulkan/libxenia-ui.a", "xenia-vulkan/libimgui.a",
+    "xenia-vulkan/libxenia-base.a", "xenia-vulkan/libfmt.a", "runtime/liblibavcodec.a", "runtime/liblibavutil.a",
+]
+
+
 def link_libraries(build):
-    """The static libraries the game library links (build.ninja's LINK_LIBRARIES of libgame.so)."""
+    """The static libraries of the profile; checked against libgame.so's link in a full build."""
     text = (build / "build.ninja").read_text(encoding="utf-8", errors="replace")
     m = re.search(r"^build libgame\.so:.*?^  LINK_LIBRARIES = (.*?)$", text, re.M | re.S)
-    if not m:
-        sys.exit(f"No libgame.so link in {build}/build.ninja: configure the Android build first.")
-    libs = []
-    for word in m.group(1).split():
-        if word.endswith(".a") and word not in libs:
-            libs.append(word)
-    return libs
+    if m:
+        linked = {w for w in m.group(1).split() if w.endswith(".a") and Path(w).name not in NOT_DEPS}
+        expected = {l for l in PROFILE_LIBS if Path(l).name not in NOT_DEPS}
+        if linked != expected:
+            sys.exit(f"The game library links other libraries than PROFILE_LIBS: "
+                     f"missing {sorted(linked - expected)}, extra {sorted(expected - linked)}")
+    return PROFILE_LIBS
+
+
+def read_inputs():
+    """profiles/dao: the supported default.xex's hash and the generated headers' (none of it game code)."""
+    xex = (INPUTS / "default.xex.sha256").read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", xex):
+        sys.exit(f"{INPUTS / 'default.xex.sha256'} holds no SHA-256")
+    return xex, {h: sha256(INPUTS / "ppc" / h) for h in ("ppc_config.h", "ppc_context.h")}
+
+
+def refresh_inputs():
+    """profiles/dao again, from the supported disc's default.xex and a new translation (recomp/ppc)."""
+    xex = ROOT / "install" / "game" / "default.xex"
+    if not xex.is_file():
+        sys.exit(f"No {xex}")
+    (INPUTS / "ppc").mkdir(parents=True, exist_ok=True)
+    (INPUTS / "default.xex.sha256").write_text(sha256(xex) + "\n", encoding="utf-8", newline="\n")
+    for h in ("ppc_config.h", "ppc_context.h"):
+        shutil.copy2(RECOMP / "ppc" / h, INPUTS / "ppc" / h)
+    print(f"{INPUTS}: written from {xex} and recomp/ppc")
 
 
 def merge(archives, out):
@@ -158,8 +192,7 @@ def toml_template():
     return text
 
 
-def recipe(kit, xex_sha256):
-    ppc = RECOMP / "ppc"
+def recipe(kit, xex_sha256, headers):
     cxx = ["--target=aarch64-none-linux-android29", "--sysroot=${KIT}/sysroot",
            "-resource-dir", "${KIT}/clang/22",
            "-DANDROID", "-fdata-sections", "-ffunction-sections", "-funwind-tables",
@@ -198,8 +231,8 @@ def recipe(kit, xex_sha256):
              "creates": ["${WORK}/ppc"], "progress": "Recompiling functions\\.\\.\\. ([0-9.]+)%"},
             # The prebuilt runtime is compiled against these generated headers (stdafx.h).
             {"id": "check-generated", "kind": "verify", "weight": 0,
-             "files": {"${WORK}/ppc/ppc_config.h": [sha256(ppc / "ppc_config.h")],
-                       "${WORK}/ppc/ppc_context.h": [sha256(ppc / "ppc_context.h")]},
+             "files": {"${WORK}/ppc/ppc_config.h": [headers["ppc_config.h"]],
+                       "${WORK}/ppc/ppc_context.h": [headers["ppc_context.h"]]},
              "message": "profile_mismatch"},
             {"id": "pch-stub", "kind": "write", "weight": 0, "creates": ["${WORK}/pch"],
              "path": "${WORK}/pch/pch.hxx",
@@ -257,9 +290,7 @@ def stage(build, kit, out):
     runtime = [build / l for l in libs if Path(l).name == "libdaodroid-runtime.a"]
     if not runtime:
         sys.exit("The game library doesn't link libdaodroid-runtime.a")
-    xex = ROOT / "install" / "game" / "default.xex"
-    if not xex.is_file():
-        sys.exit(f"No {xex}: the supported disc's default.xex gives the recipe its hash.")
+    xex_sha256, headers = read_inputs()
 
     shutil.rmtree(out, ignore_errors=True)
     (out / "lib").mkdir(parents=True)
@@ -282,7 +313,7 @@ def stage(build, kit, out):
 
     write_licenses(out / "licenses")
 
-    r = recipe(kit, sha256(xex))
+    r = recipe(kit, xex_sha256, headers)
     (out / "recipe.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8", newline="\n")
     return r
 
@@ -337,6 +368,8 @@ def check(build, kit_dir, profile, r):
         (work / "ppc").mkdir()
         for h in (RECOMP / "ppc").glob("*.h"):
             shutil.copy2(h, work / "ppc" / h.name)
+        if not (build / "ppc" / "libdaoppc.a").is_file():
+            sys.exit("check: needs a full build's compiled game code (ppc/libdaoppc.a)")
         steps = {s["id"]: s for s in r["steps"]}
         obj = work / "obj" / "build-info" / "build_info_android.o"
         args = expand(steps["build-info"]["args"], vars_, {},
@@ -364,7 +397,10 @@ def main():
     ap.add_argument("--kit", default=str(DEFAULT_KIT))
     ap.add_argument("--out", default=str(ROOT / "build" / "profile"))
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--refresh-inputs", action="store_true", help="rewrite profiles/dao from install/game and recomp/ppc")
     args = ap.parse_args()
+    if args.refresh_inputs:
+        refresh_inputs()
     build, kit_dir, out = Path(args.build), Path(args.kit), Path(args.out)
     kit = json.loads((kit_dir / "kit.json").read_text(encoding="utf-8"))
     folder = out / "dao"

@@ -79,6 +79,7 @@ set(DAO_FRONT_SOURCES
     keyboard_android.cpp
     vulkan_private_loader.c
     xdroid360_note.c)
+if (NOT XDROID360_PROFILE_BUILD) # the profile build has no generated code to link the game with
 add_library(game SHARED ${DAO_FRONT_SOURCES})
 target_compile_options(game PRIVATE ${DAO_RUNTIME_OPTIONS})
 # The runtime's kernel imports and hooks register through static initializers: the whole
@@ -87,6 +88,7 @@ target_link_libraries(game PRIVATE -Wl,--whole-archive daodroid-runtime -Wl,--no
 # SDL_main must be visible to SDL's Java side (dlsym); the rest stays hidden.
 # -Bsymbolic: FFmpeg's NEON assembly addresses its tables directly (no GOT).
 target_link_options(game PRIVATE -Wl,--gc-sections -Wl,-Bsymbolic -Wl,-z,max-page-size=16384)
+endif()
 
 # ---------------------------------------------------------------- the DAO profile
 

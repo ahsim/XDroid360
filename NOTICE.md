@@ -24,7 +24,7 @@ lists them too.
 |---|---|---|
 | LLVM: clang and lld 22.1.8, compiler-rt builtins, libc++, libc++abi, libunwind | the APK's `lib/arm64-v8a/libclang.so`, `liblld.so`; `assets/kit.zip` | Apache-2.0 with LLVM exception |
 | Android NDK r27d (27.3.13750724): the sysroot's headers, C runtime objects and library stubs | `assets/kit.zip` | Apache-2.0, BSD and others per file (as in the NDK's `NOTICE`); used under the Android Software Development Kit License Agreement |
-| XenonRecomp and XenonUtils (hedge-dev), with this project's patches (`recomp/scripts/patch_recompiler.py`) | the APK's `libxenonrecomp.so`; `recomp/tools/XenonRecomp` | MIT |
+| XenonRecomp (hedge-dev), commit `ddd128bc` with this project's patches: `scripts/patch_recompiler.py` at commit `86b9d0b` of github.com/udarmolota/Dragon-Age-Origins-Recomp-Android. A separate program the launcher runs | the APK's `libxenonrecomp.so`; source: github.com/hedge-dev/XenonRecomp at `ddd128bcca99fe8bfbb99bea583c972351fa6ace`, plus that patch script | GPL-2.0-or-later as a whole: its PowerPC disassembler (`thirdparty/disasm`) comes from GNU binutils; XenonRecomp's own code is MIT |
 | SoD's STFS extractor (a port of SoDRecomp's `stfs.cpp`) | the APK's `libstfsextract.so` | MIT (the DAORecomp contributors) |
 
 ## The games' runtimes (the game profiles)
@@ -35,11 +35,11 @@ lists them too.
 | SoDRecomp (State of Decay's runtime, derived from DAORecomp) | `sod.zip` | MIT (the DAORecomp contributors) |
 | Xenia / xenia-canary (GPU, UI and base code vendored by DAORecomp; the Vulkan backend and SPIR-V translator imported from the same pinned commit `1c81b867`) | `recomp/xenia/`, `xenia-vulkan/src/`; both profiles | BSD 3-Clause (`recomp/xenia/LICENSE`) |
 | Vulkan-Headers, VulkanMemoryAllocator, glslang (SPIR-V builder), fmt, xxHash, Snappy, Dear ImGui, toml++ (Xenia's third-party libraries) | `recomp/tools/xenia-canary/third_party/` (fetched, not in the repository); both profiles | Apache-2.0 / MIT, MIT, BSD-3-Clause and others, MIT, BSD-2-Clause, BSD-3-Clause, MIT, MIT |
-| The DXBC checksum (AMD, derived from the RSA Data Security, Inc. MD5 Message-Digest Algorithm) | `third_party/dxbc`; both profiles | as in its source's header |
 | AMD FidelityFX CAS and FSR 1 (shader headers included by Xenia's output shaders) | `recomp/tools/xenia-canary/third_party/FidelityFX-*` (fetched) | MIT |
 | FFmpeg 8.0 (the has207/FFmpeg fork, commit `d980192e`; avcodec and avutil for XMA audio), configured without GPL parts | statically in both profiles' `lib/*-deps.a`, whose objects allow linking the game library again with another build; source: https://github.com/has207/FFmpeg | LGPL 2.1 or later |
 | SIMD Everywhere (SIMDe) | via XenonRecomp's `thirdparty/`; both profiles | MIT |
 | libmspack (LZX decompression, in XenonUtils) | via XenonRecomp's `thirdparty/`; both profiles | LGPL 2.1 |
+| XenonUtils (hedge-dev): XEX loading | via XenonRecomp; both profiles | MIT |
 | tiny-AES-c, TinySHA1 (in XenonUtils) | via XenonRecomp's `thirdparty/`; both profiles | Unlicense; ISC-style (in its header) |
 
 Design references that contributed no code: mw2-android / MW2 Recompiled (GPL-3.0),

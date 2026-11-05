@@ -29,7 +29,17 @@ set(XE_TP ${RECOMP}/tools/xenia-canary/third_party)
 
 # ---------------------------------------------------------------- generated game code
 
-add_subdirectory(${DAO_ROOT}/android/ppc-probe ${CMAKE_BINARY_DIR}/ppc)
+# XDROID360_PROFILE_BUILD: only the static libraries the phone links the game with
+# (scripts/make_dao_profile.py), without the generated code: the phone translates that itself.
+# The two generated headers the runtime includes (the image's layout) come from profiles/dao/ppc
+# then, so the profile builds without the game.
+option(XDROID360_PROFILE_BUILD "Build only what the game profile (dao.zip) holds" OFF)
+if (XDROID360_PROFILE_BUILD)
+    set(DAO_PPC_HEADERS ${DAO_ROOT}/profiles/dao/ppc)
+else()
+    set(DAO_PPC_HEADERS ${RECOMP}/ppc)
+    add_subdirectory(${DAO_ROOT}/android/ppc-probe ${CMAKE_BINARY_DIR}/ppc)
+endif()
 
 # ---------------------------------------------------------------- Xenia (Vulkan GPU)
 
@@ -66,9 +76,11 @@ include(${RECOMP}/xenia/ffmpeg.cmake)
 
 # The build descriptor the runtime reads the image layout and function table from
 # (DAORecompLib/build_info.cpp, compiled per generated library as DAORecomp does).
-add_library(daobuildinfo STATIC ${CMAKE_CURRENT_SOURCE_DIR}/build_info_android.cpp)
-target_include_directories(daobuildinfo PRIVATE ${RECOMP}/ppc ${RECOMP}/DAORecompLib ${XENON_TP}/simde)
-target_compile_definitions(daobuildinfo PRIVATE DAO_BUILD_INFO=DaoBuildDisc DAO_BUILD_MAPPINGS=PPCFuncMappings)
+if (NOT XDROID360_PROFILE_BUILD) # on the phone, the recipe's build-info step compiles it
+    add_library(daobuildinfo STATIC ${CMAKE_CURRENT_SOURCE_DIR}/build_info_android.cpp)
+    target_include_directories(daobuildinfo PRIVATE ${RECOMP}/ppc ${RECOMP}/DAORecompLib ${XENON_TP}/simde)
+    target_compile_definitions(daobuildinfo PRIVATE DAO_BUILD_INFO=DaoBuildDisc DAO_BUILD_MAPPINGS=PPCFuncMappings)
+endif()
 
 # Everything both front ends share. Not here: input/input.cpp and apu/audio_output.cpp
 # (SDL3: real in the app, a shim in the headless build), the UI overlays (ImGui over the
@@ -115,7 +127,7 @@ add_library(daodroid-runtime STATIC
 target_include_directories(daodroid-runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${DAO_SRC}
-    ${RECOMP}/ppc
+    ${DAO_PPC_HEADERS}
     ${RECOMP}/DAORecompLib
     ${RECOMP}/xenia/src
     ${XE_TP}/fmt/include
@@ -132,7 +144,14 @@ set(DAO_RUNTIME_OPTIONS
     -ffp-contract=off
     -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function)
 target_compile_options(daodroid-runtime PRIVATE ${DAO_RUNTIME_OPTIONS})
-target_link_libraries(daodroid-runtime PUBLIC daobuildinfo daoppc XenonUtils dao-xenia-vulkan libavcodec libavutil log)
+target_link_libraries(daodroid-runtime PUBLIC XenonUtils dao-xenia-vulkan libavcodec libavutil log)
+if (NOT XDROID360_PROFILE_BUILD)
+    target_link_libraries(daodroid-runtime PUBLIC daobuildinfo daoppc)
+endif()
+
+if (XDROID360_PROFILE_BUILD)
+    return() # the headless front end links the generated code
+endif()
 
 # ---------------------------------------------------------------- headless front end
 
