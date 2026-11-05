@@ -220,7 +220,9 @@ jobs:
           for f in lib/arm64-v8a/libclang.so lib/arm64-v8a/liblld.so lib/arm64-v8a/libxenonrecomp.so \
                    lib/arm64-v8a/libstfsextract.so lib/arm64-v8a/libSDL3.so assets/kit.zip \
                    assets/games/dao.zip assets/games/sod.zip; do
-            echo "$LIST" | grep -q " $f\$" || { echo "missing in the APK: $f"; exit 1; }
+            # A here-string, not a pipe: grep -q stops at the first match, and the writer of a
+            # pipe would then fail with "Broken pipe" under pipefail.
+            grep -q " $f\$" <<< "$LIST" || { echo "missing in the APK: $f"; exit 1; }
           done
           ls -l "$APK"
 
