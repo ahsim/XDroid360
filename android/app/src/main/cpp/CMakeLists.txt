@@ -16,6 +16,9 @@ endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# No C++20 module scanning: on Linux CMake would pick the host's clang-scan-deps, which can't
+# read the NDK clang's precompiled headers (as android/runtime already sets).
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 set(DAO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../..)
 get_filename_component(DAO_ROOT ${DAO_ROOT} ABSOLUTE)
