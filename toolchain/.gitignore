@@ -1,0 +1,20 @@
+# An allowlist: everything at the top is ignored except what is named below. Never in this
+# repository: the LLVM sources and downloads (src/, dl/), the build trees (build-*/, stage/),
+# the outputs (out/: they go to the releases), fetch_sources.sh's checkouts (sources/), the P0
+# phone kit (phone/: it holds code generated from a game) and the P0 test app (p0test/).
+/*
+!/.gitignore
+!/.gitattributes
+!/LICENSE
+!/README.md
+!/RECIPE_FORMAT_DRAFT.md
+!/env.sh
+!/build_tools.sh
+!/package.sh
+!/configure_android_llvm.sh
+!/build_host_tablegen.sh
+!/fetch_sources.sh
+!/licenses/
+!/.github/
+!/stfsextract/
+!/docs/

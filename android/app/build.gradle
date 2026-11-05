@@ -17,22 +17,58 @@ if (signingFile.isFile()) {
 def hasSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every { signing.getProperty(it) }
 
 // Building games on the phone: the toolchain (clang, lld and XenonRecomp as jniLibs, kit.zip),
-// made by SD1/toolchain, and the game profiles (games/<id>.zip): SoD's from the toolchain's
-// output, DAO's from scripts/make_dao_profile.py. Override the folder with
+// made by toolchain/ (build_tools.sh, package.sh), and the game profiles (games/<id>.zip):
+// DAO's from scripts/make_dao_profile.py, SoD's from SoDRecomp. Override the folder with
 // -Pxdroid360.toolchain=<dir>. Without it the APK can't build games (Toolchain.present).
-def toolchainOut = file(project.findProperty("xdroid360.toolchain") ?: "${rootDir}/../../SD1/toolchain/out")
+def toolchainOut = file(project.findProperty("xdroid360.toolchain") ?: "${rootDir}/../toolchain/out")
 def daoProfile = file("${rootDir}/../build/profile/dao.zip")
+// State of Decay's profile as SoDRecomp's make_profile.sh writes it (else the toolchain folder's
+// games/, as fetch_toolchain.py lays it out). Override with -Pxdroid360.sodProfile=<zip>.
+def sodProfile = file(project.findProperty("xdroid360.sodProfile") ?: "${rootDir}/../../SD1/sod360/build/out/sod.zip")
 def toolchainAssets = layout.buildDirectory.dir("generated/toolchain/assets")
 def copyToolchainAssets = tasks.register("copyToolchainAssets", Sync) {
     into toolchainAssets
     from(toolchainOut) { include "kit.zip" }
     from(file("${toolchainOut}/games")) {
         include "*.zip"
+        if (sodProfile.isFile()) exclude "sod.zip"
+        into "games"
+    }
+    from(sodProfile.parentFile) {
+        include sodProfile.name
+        rename { "sod.zip" }
         into "games"
     }
     from(daoProfile.parentFile) {
         include daoProfile.name
         into "games"
+    }
+    // A profile made for other tools than the kit's is refused on the phone ("this launcher
+    // can't build this game"): stop here instead (scripts/check_profiles.py does the same in CI).
+    doLast {
+        def assets = toolchainAssets.get().asFile
+        def kitZip = new File(assets, "kit.zip")
+        if (!kitZip.isFile()) return
+        def slurper = new groovy.json.JsonSlurper()
+        def entry = { File zip, String name ->
+            def z = new java.util.zip.ZipFile(zip)
+            try {
+                def e = z.getEntry(name)
+                return e == null ? null : slurper.parse(z.getInputStream(e))
+            } finally {
+                z.close()
+            }
+        }
+        def kit = entry(kitZip, "kit.json")
+        new File(assets, "games").listFiles()?.each { File profile ->
+            def need = entry(profile, "recipe.json")?.requires ?: [:]
+            def problems = []
+            if (need.kit != kit.kit) problems << "kit ${need.kit} (the kit is ${kit.kit})"
+            need.tools?.each { tool, version ->
+                if (kit.tools?.get(tool) != version) problems << "${tool} ${version} (the kit has ${kit.tools?.get(tool)})"
+            }
+            if (problems) throw new GradleException("${profile.name} doesn't fit the kit: needs " + problems.join(", "))
+        }
     }
 }
 
@@ -50,8 +86,11 @@ android {
 
         externalNativeBuild {
             cmake {
+                // Flexible page sizes: every library ours is aligned for 16 KB pages too
+                // (Android's 16 KB devices refuse 4 KB-aligned ones).
                 arguments "-DANDROID_STL=c++_static",
                           "-DANDROID_PLATFORM=android-29",
+                          "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                           "-DCMAKE_BUILD_TYPE=Release"
             }
         }

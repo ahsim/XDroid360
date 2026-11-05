@@ -1,12 +1,13 @@
 name: Build XDroid360
 
 # The player's APK: the launcher with everything it needs to build the games on the phone.
-#   - DAO's game profile (dao.zip) is built here, from DAORecomp's runtime (the recomp fork) and
-#     profiles/dao (no game code or data: scripts/make_dao_profile.py, XDROID360_PROFILE_BUILD).
-#   - The on-phone toolchain (clang, lld, XenonRecomp, the STFS extractor), the kit and State of
-#     Decay's profile come from their own repositories' releases, by the exact assets and SHA-256
-#     values pinned in android/toolchain.lock.json (scripts/fetch_toolchain.py).
-# An APK without them can't build any game, so none is published.
+#   toolchain  the on-phone tools, built here from pinned sources (toolchain/env.sh): clang and
+#              lld 22.1.8 for aarch64-android29 (cached: the first build takes one to two
+#              hours), the patched XenonRecomp, the STFS extractor, and the kit.
+#   apk        DAO's game profile (dao.zip), built here from DAORecomp's runtime (the recomp
+#              fork) and profiles/dao (no game code or data); State of Decay's profile from
+#              SoDRecomp's release, by the asset and SHA-256 pinned in android/toolchain.lock.json;
+#              then the release APK, checked to carry all of it.
 #
 # Signing: the release APK is signed with the release key when the repository's secrets hold it
 # (Settings > Secrets and variables > Actions):
@@ -24,9 +25,93 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  toolchain:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: toolchain
+    env:
+      CMAKE: cmake
+      NINJA: ninja
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Free disk space and set up the build folder
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/boost
+          sudo mkdir -p /mnt/work && sudo chown "$USER" /mnt/work
+          df -h / /mnt
+
+      - name: Install Ninja
+        run: sudo apt-get update -q && sudo apt-get install -y -q ninja-build
+
+      - name: Install NDK 27.3.13750724
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> "$GITHUB_ENV"
+
+      # LLVM's release, XenonRecomp at its commit patched by the pinned patch script, SDL.
+      - name: Fetch the pinned sources
+        run: bash fetch_sources.sh
+
+      - name: Restore clang and lld
+        id: llvm
+        uses: actions/cache@v4
+        with:
+          path: |
+            toolchain/stage/bin/clang
+            toolchain/stage/bin/lld
+            toolchain/stage/lib/clang
+          key: llvm-${{ hashFiles('toolchain/env.sh', 'toolchain/configure_android_llvm.sh', 'toolchain/build_host_tablegen.sh') }}
+
+      - name: Build the host tablegens
+        if: steps.llvm.outputs.cache-hit != 'true'
+        run: HOST_TABLEGEN_BUILD_DIR=/mnt/work/build-host bash build_host_tablegen.sh
+
+      - name: Build clang and lld
+        if: steps.llvm.outputs.cache-hit != 'true'
+        run: |
+          HOST_LLVM_BIN=/mnt/work/build-host/bin LLVM_BUILD_DIR=/mnt/work/build-android bash build_tools.sh llvm
+          rm -rf /mnt/work/build-android /mnt/work/build-host
+
+      - name: Build XenonRecomp and the STFS extractor
+        run: |
+          bash build_tools.sh xr
+          bash build_tools.sh stfs
+
+      # Every library must be 16 KB-aligned: a 16 KB-page kernel refuses the others.
+      - name: Package and check alignment
+        run: |
+          set -euo pipefail
+          RELEASE="dev-${GITHUB_SHA::7}" bash package.sh
+          READELF="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          for f in out/jniLibs/arm64-v8a/*.so; do
+            for a in $("$READELF" -lW "$f" | awk '/LOAD/{print $NF}'); do
+              [ $((a)) -ge 16384 ] || { echo "$f: LOAD aligned to $a"; exit 1; }
+            done
+          done
+          # libxenonrecomp.so's exact source (GPL-2.0-or-later): XenonRecomp at its pinned commit
+          # with its submodules, as patched, the patch script, and these build scripts.
+          tar -czf out/xenonrecomp-source.tar.gz --exclude=.git \
+            -C sources XenonRecomp patch_recompiler.py \
+            -C "$GITHUB_WORKSPACE/toolchain" env.sh build_tools.sh fetch_sources.sh licenses/GPL-2.0.txt
+
+      - name: Keep the toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain
+          path: |
+            toolchain/out/jniLibs
+            toolchain/out/kit.zip
+            toolchain/out/kit/kit.json
+            toolchain/out/xenonrecomp-source.tar.gz
+          retention-days: 30
+
+  apk:
+    needs: toolchain
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,13 +149,19 @@ jobs:
           echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> "$GITHUB_PATH"
           echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
+      - name: Take the toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: toolchain
+          path: build/toolchain
+
       # DAORecomp's pinned sources (Xenia's third-party code, XenonRecomp, SDL), as its installer
       # checks them out, and XenonRecomp patched.
       - name: Fetch the build's sources
         run: python3 -I scripts/fetch_build_sources.py
 
-      - name: Fetch the toolchain and State of Decay's profile
-        run: python3 -I scripts/fetch_toolchain.py --out build/toolchain
+      - name: Fetch State of Decay's profile
+        run: python3 -I scripts/fetch_toolchain.py --out build/fetched
 
       - name: Build DAO's game profile
         shell: bash
@@ -81,7 +172,10 @@ jobs:
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release -DXDROID360_PROFILE_BUILD=ON
           python3 -I scripts/make_dao_profile.py --build build/profile-android --kit build/toolchain/kit --out build/profile
-          sha256sum build/profile/dao.zip | tee build/profile/dao.zip.sha256
+
+      # A profile made for other tools than the kit's would be refused on the phone.
+      - name: Check the profiles against the kit
+        run: python3 -I scripts/check_profiles.py build/toolchain/kit/kit.json build/profile/dao.zip build/fetched/games/sod.zip
 
       # The key store goes to the runner's temp folder, never into the workspace.
       - name: Set up release signing
@@ -109,7 +203,8 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleLauncherRelease -Pxdroid360.toolchain="$GITHUB_WORKSPACE/build/toolchain"
+          ./gradlew assembleLauncherRelease -Pxdroid360.toolchain="$GITHUB_WORKSPACE/build/toolchain" \
+            -Pxdroid360.sodProfile="$GITHUB_WORKSPACE/build/fetched/games/sod.zip"
 
       - name: Remove the key store
         if: always()
@@ -137,12 +232,13 @@ jobs:
           retention-days: 30
 
       # DAO's profile on its own (xdroid360-profile-<version>.zip), for the release page.
-      - name: Upload DAO's profile
+      - name: Name DAO's profile
         shell: bash
         run: |
           cp build/profile/dao.zip "build/profile/xdroid360-profile-${{ steps.app_version.outputs.profile }}.zip"
           (cd build/profile && sha256sum "xdroid360-profile-${{ steps.app_version.outputs.profile }}.zip" > SHA256SUMS)
-      - uses: actions/upload-artifact@v4
+      - name: Upload DAO's profile
+        uses: actions/upload-artifact@v4
         with:
           name: xdroid360-profile-${{ steps.app_version.outputs.profile }}
           path: |
