@@ -2,6 +2,8 @@
 ppc/
 ppc_tu6/
 recomp/ppc/
+# Except DAO's profile inputs: the two generated headers only (the image's layout, no code).
+!profiles/dao/ppc/
 recomp/ppc_tu6/
 recomp/tools/
 recomp/build/
