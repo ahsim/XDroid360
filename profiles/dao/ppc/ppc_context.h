@@ -189,11 +189,6 @@ inline float PPCHalfToFloat(uint16_t h) noexcept
     return f;
 }
 
-#ifndef PPC_QUERY_TIMEBASE
-uint64_t PPCQueryTimebase() noexcept;
-#define PPC_QUERY_TIMEBASE() PPCQueryTimebase()
-#endif
-
 #define PPC_LOOKUP_FUNC(x, y) *(PPCFunc**)(x + PPC_IMAGE_BASE + PPC_IMAGE_SIZE + (uint64_t(uint32_t(y) - PPC_CODE_BASE) * 2))
 
 #ifndef PPC_CALL_INDIRECT_FUNC

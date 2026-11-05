@@ -41,6 +41,8 @@ public class BuildService extends Service {
 
     private static final Map<String, Status> statuses = new ConcurrentHashMap<>();
     private static volatile String runningId;
+    /** Asked to start, its onStartCommand not run yet: running, as far as the build screen goes. */
+    private static volatile String startingId;
     private RecipeRunner runner;
     private PowerManager.WakeLock wakeLock;
     private long lastNotified;
@@ -48,11 +50,12 @@ public class BuildService extends Service {
     static Status status(String id) { return statuses.get(id); }
 
     /** Whether this process is building id right now (else a "running" build.json was interrupted). */
-    static boolean isRunning(String id) { return id.equals(runningId); }
+    static boolean isRunning(String id) { return id.equals(runningId) || id.equals(startingId); }
 
-    static boolean busy() { return runningId != null; }
+    static boolean busy() { return runningId != null || startingId != null; }
 
     static void start(Context context, String id) {
+        startingId = id;
         androidx.core.content.ContextCompat.startForegroundService(context,
                 new Intent(context, BuildService.class).putExtra(EXTRA_ID, id));
     }
@@ -70,11 +73,13 @@ public class BuildService extends Service {
             return START_NOT_STICKY;
         }
         if (id == null || runningId != null) {
+            if (id != null && id.equals(startingId) && !id.equals(runningId)) startingId = null;
             if (runningId == null) stopSelf(startId);
             return START_NOT_STICKY;
         }
         BuildJob job = BuildJob.load(this, id);
         if (job == null) {
+            startingId = null;
             stopSelf(startId);
             return START_NOT_STICKY;
         }
@@ -82,6 +87,7 @@ public class BuildService extends Service {
         ServiceCompat.startForeground(this, NOTIFICATION, notification(job, getString(R.string.build_preparing), 0, true),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         runningId = id;
+        startingId = null;
         Status status = new Status();
         statuses.put(id, status);
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);

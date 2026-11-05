@@ -241,6 +241,10 @@ public class BuildActivity extends AppCompatActivity {
     }
 
     private void resume(BuildJob job) {
+        if (BuildService.isRunning(job.id)) { // already going: show it
+            showJob();
+            return;
+        }
         if (BuildService.busy()) {
             setMessage(getString(R.string.build_busy));
             return;

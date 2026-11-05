@@ -158,8 +158,10 @@ final class GameSource {
                     head.delete();
                 }
             }
+            if (titleId.isEmpty()) throw new Recipe.Failure("unknown_title", "the zip's packages name no title");
             for (java.util.zip.ZipEntry e : stfs) {
-                if (!titleId.equals(ZipSource.titleId(e))) continue; // another game's folder in the same zip
+                String folder = ZipSource.titleId(e);
+                if (!folder.isEmpty() && !titleId.equals(folder)) continue; // another game's folder in the same zip
                 packages.add(new Package(null, e.getName(), "0x" + ZipSource.contentType(e), e.getSize()));
                 gameBytes += e.getSize();
                 scratchBytes = Math.max(scratchBytes, e.getSize()); // one package at a time
