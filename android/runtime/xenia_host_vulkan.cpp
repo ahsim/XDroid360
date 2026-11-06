@@ -8,6 +8,9 @@
 #include "stdafx.h"
 
 #include <condition_variable>
+#include <mutex>
+#include <string>
+#include <unordered_map>
 
 #include "gpu/xenia_host.h"
 #include "kernel/memory.h"
@@ -110,10 +113,55 @@ namespace dao::gpu
     void XeniaLowLatencyFrameSwapped() {}
     bool XeniaLowLatencyNeedsRestart() { return false; }
 
+    // Xenia's error lines ("!> <thread> message") into the game's log: each distinct message
+    // the first time, then when it has repeated 10, 100, 1000... times, so a failure repeated
+    // every frame stays a few lines.
+    class XeniaErrorSink final : public xe::LogSink
+    {
+    public:
+        void Write(const char* buf, size_t size) override
+        {
+            std::lock_guard lock(m_mutex);
+            for (size_t i = 0; i < size; ++i)
+            {
+                if (buf[i] != '\n')
+                {
+                    if (m_line.size() < 1024)
+                        m_line += buf[i];
+                    continue;
+                }
+                Line(m_line);
+                m_line.clear();
+            }
+        }
+        void Flush() override {}
+
+    private:
+        void Line(const std::string& line)
+        {
+            if (line.size() < 3 || line[0] != '!' || line[1] != '>')
+                return;
+            // "!> 00002E24 message": the thread id isn't part of what repeats.
+            size_t at = line.find(' ', 3);
+            const std::string message = at == std::string::npos ? line.substr(3) : line.substr(at + 1);
+            const uint64_t n = ++m_counts[message];
+            if (n == 1)
+                LOGE("xenia: {}", message);
+            else if (n == 10 || n == 100 || n == 1000 || n == 10000 || n == 100000)
+                LOGE("xenia (x{}): {}", n, message);
+        }
+
+        std::mutex m_mutex;
+        std::string m_line;
+        std::unordered_map<std::string, uint64_t> m_counts;
+    };
+
     bool InitializeXeniaGraphics(const std::filesystem::path& userRoot)
     {
-        // On Android Xenia's log goes to logcat (tag dao-xenia), not a file.
+        // On Android Xenia's log goes to logcat (tag dao-xenia), not a file; its errors are
+        // copied into dao.log too (XeniaErrorSink), so a bug report has them in one place.
         xe::InitializeLogging("dao-xenia");
+        xe::AddLogSink(std::make_unique<XeniaErrorSink>());
         // DAO_GPU_STATS' reports into dao.log, next to the game's own.
         xe::gpu::vulkan::dao_stats::SetSink([](const char* line) { LOGI("{}", line); });
 

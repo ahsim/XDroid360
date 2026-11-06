@@ -29,6 +29,15 @@
     <string name="setting_hud_fps">Только FPS</string>
     <string name="setting_hud_full">Полная информация</string>
     <string name="setting_hud_hint">Полная информация — полоска вверху: загрузка GPU и CPU, память, потребление, температура и график FPS. Видно, что тормозит игру.</string>
+    <string name="setting_language">Язык игры</string>
+    <string name="language_auto">Язык телефона</string>
+    <string-array name="languages">
+        <item>English</item>
+        <item>Italiano</item>
+        <item>Español</item>
+    </string-array>
+    <string name="setting_diagnostics">Диагностика для отчёта об ошибке</string>
+    <string name="setting_diagnostics_help">Пишет замеры GPU в лог игры (немного медленнее). Включите, поиграйте там, где плохо, и отправьте отчёт об ошибке.</string>
     <string name="setting_lod">Текстуры</string>
     <string-array name="lod">
         <item>Полная (самая чёткая)</item>

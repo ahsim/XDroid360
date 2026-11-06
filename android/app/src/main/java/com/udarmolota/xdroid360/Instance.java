@@ -42,6 +42,12 @@ final class Instance {
     /** The in-game display: nothing, the FPS counter, or the performance bar (as in Zomdroid). */
     static final int HUD_OFF = 0, HUD_FPS = 1, HUD_FULL = 2;
     int hudMode = HUD_OFF;
+    /** The game's language (config.toml [game] language), "" for the phone's. */
+    String language = "";
+    /** The GPU's measurements in the game's log, for a bug report (DAO_GPU_STATS, DAO_GPU_TIMING). */
+    boolean diagnostics = false;
+    /** The languages the supported discs have text for (both games read the same key). */
+    static final String[] LANGUAGES = { "english", "italian", "spanish" };
     boolean vibrateOnTouch = false;
     /** The frame rate picked, 0 for the package's default (options.frame_rate). */
     int frameRate = 0;
@@ -136,6 +142,8 @@ final class Instance {
             s.put("sysmem", sysmem);
             s.put("texture_lod_bias", textureLodBias);
             s.put("hud_mode", hudMode);
+            s.put("language", language);
+            s.put("diagnostics", diagnostics);
             s.put("vibrate_on_touch", vibrateOnTouch);
             s.put("frame_rate", frameRate);
             s.put("preset", preset);
@@ -169,6 +177,8 @@ final class Instance {
                 sysmem = s.optString("sysmem", sysmem);
                 textureLodBias = s.optInt("texture_lod_bias", textureLodBias);
                 // Before hud_mode: the performance bar was a switch, on unless turned off.
+                language = s.optString("language", language);
+                diagnostics = s.optBoolean("diagnostics", diagnostics);
                 hudMode = s.has("hud_mode") ? s.optInt("hud_mode", hudMode)
                         : s.optBoolean("perf_overlay", true) ? HUD_FULL : HUD_OFF;
                 vibrateOnTouch = s.optBoolean("vibrate_on_touch", vibrateOnTouch);
@@ -251,6 +261,16 @@ final class Instance {
         }
         i.name = title;
         return i;
+    }
+
+    /** The language to start the game in: the chosen one, else the phone's (Italian, Spanish), else English. */
+    String languageToUse() {
+        if (!language.isEmpty()) return language;
+        switch (java.util.Locale.getDefault().getLanguage()) {
+            case "it": return "italian";
+            case "es": return "spanish";
+            default: return "english";
+        }
     }
 
     /** name, or "name 2", "name 3"... if another instance already has it. */

@@ -317,9 +317,16 @@ public class GameActivity extends SDLActivity {
             case Instance.SYSMEM_OFF: nativeSetenv("TU_DEBUG", ""); break; // set: the library's Adreno 8xx default stays off
             default: break; // the library decides from the GPU
         }
+        // Diagnostics for a bug report: the GPU's measurements in the game's log.
+        if (current.diagnostics) {
+            nativeSetenv("DAO_GPU_STATS", "1");
+            nativeSetenv("DAO_GPU_TIMING", "1");
+        }
         File config = new File(current.userdata(), "config.toml");
         try {
             XeniaConfig.set(config, "dao_texture_lod_bias", String.valueOf(current.textureLodBias));
+            // The game's text language, read at its start (both games' runtimes: [game] language).
+            XeniaConfig.set(config, "game", "language", "\"" + current.languageToUse() + "\"");
             // Always: it saves GPU work, and the plain scaling it uses looks the same on a phone.
             XeniaConfig.set(config, "dao_present_prerotate", "true");
             org.json.JSONObject frameRate = current.option("frame_rate");
@@ -337,6 +344,7 @@ public class GameActivity extends SDLActivity {
         }
         Log.i(TAG, "Instance " + current.id + ": driver " + current.driver + ", sysmem " + current.sysmem
                 + ", texture LOD " + current.textureLodBias + ", display " + current.hudMode
+                + ", language " + current.languageToUse()
                 + (current.option("frame_rate") != null ? ", frame rate " + current.frameRateToUse() : "")
                 + (current.option("preset") != null ? ", preset " + (current.preset.isEmpty() ? "game's own" : current.preset) : ""));
     }

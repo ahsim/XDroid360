@@ -31,6 +31,15 @@
     <string name="setting_hud_fps">Only FPS</string>
     <string name="setting_hud_full">Full info</string>
     <string name="setting_hud_hint">Full info shows a bar at the top: GPU and CPU load, memory, power draw, temperature and an FPS graph. Handy to see what slows the game down.</string>
+    <string name="setting_language">Game language</string>
+    <string name="language_auto">The phone\'s language</string>
+    <string-array name="languages">
+        <item>English</item>
+        <item>Italiano</item>
+        <item>Español</item>
+    </string-array>
+    <string name="setting_diagnostics">Diagnostics for bug reports</string>
+    <string name="setting_diagnostics_help">Writes the GPU\'s measurements into the game\'s log (a little slower). Turn it on, play the part that misbehaves, then Report a bug.</string>
     <string name="setting_lod">Textures</string>
     <string-array name="lod">
         <item>Full (sharpest)</item>

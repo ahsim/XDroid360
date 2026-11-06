@@ -147,6 +147,21 @@
                         android:visibility="gone" />
 
                     <TextView
+                        android:id="@+id/language_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/setting_language"
+                        android:textAppearance="?attr/textAppearanceTitleSmall"
+                        android:visibility="gone" />
+
+                    <Spinner
+                        android:id="@+id/language"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
@@ -275,6 +290,19 @@
                             android:id="@+id/sysmem"
                             android:layout_width="match_parent"
                             android:layout_height="48dp" />
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/diagnostics"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/setting_diagnostics" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/setting_diagnostics_help"
+                            android:textAppearance="?attr/textAppearanceBodySmall" />
 
                         <TextView
                             android:layout_width="match_parent"

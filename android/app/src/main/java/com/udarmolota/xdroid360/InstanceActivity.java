@@ -93,6 +93,9 @@ public class InstanceActivity extends AppCompatActivity {
             for (int i = 0; i < hudIds.length; i++) if (hudIds[i] == checked) instance.hudMode = i;
             save();
         });
+        MaterialSwitch diagnostics = findViewById(R.id.diagnostics);
+        diagnostics.setChecked(instance.diagnostics);
+        diagnostics.setOnCheckedChangeListener((b, on) -> { instance.diagnostics = on; save(); });
         MaterialSwitch vibrate = findViewById(R.id.vibrate);
         vibrate.setChecked(instance.vibrateOnTouch);
         vibrate.setOnCheckedChangeListener((b, on) -> { instance.vibrateOnTouch = on; save(); });
@@ -155,6 +158,18 @@ public class InstanceActivity extends AppCompatActivity {
             int at = Math.max(0, ids.indexOf(instance.preset));
             showSpinner(R.id.preset_label, R.id.preset, labels, at, i -> instance.preset = ids.get(i));
         }
+        // The game's language: the phone's by default.
+        java.util.List<String> languageIds = new java.util.ArrayList<>();
+        java.util.List<CharSequence> languageLabels = new java.util.ArrayList<>();
+        languageIds.add("");
+        languageLabels.add(getString(R.string.language_auto));
+        String[] names = getResources().getStringArray(R.array.languages);
+        for (int l = 0; l < Instance.LANGUAGES.length; l++) {
+            languageIds.add(Instance.LANGUAGES[l]);
+            languageLabels.add(names[l]);
+        }
+        showSpinner(R.id.language_label, R.id.language, languageLabels, Math.max(0, languageIds.indexOf(instance.language)),
+                i -> instance.language = languageIds.get(i));
         org.json.JSONObject frameRate = instance.option("frame_rate");
         org.json.JSONArray choices = frameRate != null ? frameRate.optJSONArray("choices") : null;
         if (choices != null && choices.length() > 0) {
