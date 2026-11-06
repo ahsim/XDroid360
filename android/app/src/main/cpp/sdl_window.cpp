@@ -5,8 +5,10 @@
 #include <android/native_window.h>
 
 #include <chrono>
+#include <dlfcn.h>
 #include <unordered_map>
 
+#include "gpu/video.h"
 #include "input/input.h"
 #include "kernel/game_exit.h"
 #include "xenia/ui/surface_android.h"
@@ -65,6 +67,54 @@ namespace dao::app
         Wake();
     }
 
+    // The display's refresh matched to the game's frame rate (60 or 30 rather than a phone's
+    // 120 Hz): less power and heat, and no uneven repeats of a frame. Android 11's
+    // ANativeWindow_setFrameRate, looked up at run time (the app runs from Android 10) in
+    // libandroid.so itself: the game library lives in the app's linker namespace, where
+    // RTLD_DEFAULT doesn't reach the system's libraries. Checked once a second, as the rate
+    // can change in the game's Graphics tab.
+    static void UpdateDisplayRate(SDL_Window* window)
+    {
+        using SetFrameRateFn = int32_t (*)(ANativeWindow*, float, int8_t);
+        static const auto setFrameRate = []() -> SetFrameRateFn {
+            void* android = dlopen("libandroid.so", RTLD_NOW);
+            void* symbol = android ? dlsym(android, "ANativeWindow_setFrameRate") : nullptr;
+            if (!symbol)
+                LOGI("Display refresh: the phone's (no ANativeWindow_setFrameRate: {})", android ? "Android 10" : dlerror());
+            return reinterpret_cast<SetFrameRateFn>(symbol);
+        }();
+        static std::chrono::steady_clock::time_point s_next;
+        static ANativeWindow* s_window = nullptr;
+        static int s_rate = -1;
+        static bool s_reportedNoWindow = false;
+        if (!setFrameRate)
+            return;
+        const auto now = std::chrono::steady_clock::now();
+        if (now < s_next)
+            return;
+        s_next = now + std::chrono::seconds(1);
+        auto* nativeWindow = static_cast<ANativeWindow*>(
+            SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
+        if (!nativeWindow)
+        {
+            if (!s_reportedNoWindow)
+                LOGI("Display refresh: no window yet");
+            s_reportedNoWindow = true;
+            return;
+        }
+        const int rate = dao::gpu::FrameRate(); // 0: unlimited
+        if (nativeWindow == s_window && rate == s_rate)
+            return;
+        // Above 60, or unlimited: the phone's own choice (0).
+        const float hz = rate > 0 && rate <= 60 ? float(rate) : 0.0f;
+        constexpr int8_t kFixedSource = 1; // ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
+        const int32_t result = setFrameRate(nativeWindow, hz, kFixedSource);
+        LOGI("Display refresh: {} (result {})", hz > 0 ? fmt::format("{} Hz requested", rate) : std::string("the phone's"),
+            result);
+        s_window = nativeWindow;
+        s_rate = rate;
+    }
+
     void SdlWindowedAppContext::RunUILoop(SDL_Window* window, SdlWindow* xeWindow)
     {
         bool surfaceLost = false;
@@ -78,6 +128,7 @@ namespace dao::app
         for (;;)
         {
             SDL_Event event;
+            UpdateDisplayRate(window);
             if (countEvents)
             {
                 const auto now = std::chrono::steady_clock::now();
