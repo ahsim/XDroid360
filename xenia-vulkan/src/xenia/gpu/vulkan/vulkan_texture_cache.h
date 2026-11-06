@@ -330,6 +330,9 @@ class VulkanTextureCache final : public TextureCache {
     // the descriptor set of its storage view (created on first use), or
     // VK_NULL_HANDLE if failed.
     bool dao_resolve_writable() const { return dao_resolve_writable_; }
+    // DAO: DAO_GPU_STATS - loaded at least once (a later load is a reload
+    // after a CPU or GPU write).
+    bool dao_loaded_before = false;
     void DaoSetResolveWritable() { dao_resolve_writable_ = true; }
     VkDescriptorSet DaoGetResolveDescriptorSet(VkFormat format);
 

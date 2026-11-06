@@ -27,6 +27,7 @@
 #include "xenia/gpu/d3d12/dao_frame_trace.h"
 #include "xenia/gpu/texture_cache.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
+#include "xenia/gpu/vulkan/dao_vulkan_timing.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/gpu/xenos.h"
@@ -1169,6 +1170,9 @@ bool VulkanRenderTargetCache::Resolve(
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
   }
+  // DAO: a group for DAO_GPU_TIMING, and the passes ended for it say so.
+  dao_timing::WorkScope dao_work(command_processor_.deferred_command_buffer(),
+                                 dao_stats::Activity::kResolve);
   // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
   DAO_STATS_ADD(resolves, 1);
   DAO_STATS_ADD(resolve_pixels,
@@ -4789,6 +4793,9 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
     const Transfer::Rectangle* resolve_clear_rectangle) {
   assert_true(GetPath() == Path::kHostRenderTargets);
 
+  // DAO: a group for DAO_GPU_TIMING, and the passes ended for it say so.
+  dao_timing::WorkScope dao_work(command_processor_.deferred_command_buffer(),
+                                 dao_stats::Activity::kTransfer);
   // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
   if (render_target_transfers && dao_stats::Enabled()) {
     for (uint32_t i = 0; i < render_target_count; ++i) {

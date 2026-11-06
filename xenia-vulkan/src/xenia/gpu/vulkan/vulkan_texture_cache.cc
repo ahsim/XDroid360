@@ -23,6 +23,7 @@
 #include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/texture_util.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
+#include "xenia/gpu/vulkan/dao_vulkan_timing.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/ui/vulkan/ui_samplers.h"
@@ -1227,6 +1228,10 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   }
   const LoadShaderInfo& load_shader_info = GetLoadShaderInfo(load_shader);
 
+  // DAO: the load's GPU work is a group for DAO_GPU_TIMING, and the render
+  // passes ended for it say so (dao_vulkan_timing.h).
+  dao_timing::WorkScope dao_work(command_processor_.deferred_command_buffer(),
+                                 dao_stats::Activity::kTextureLoad);
   // DAO: DAO_GPU_STATS (dao_vulkan_stats.h): the loads, their guest bytes, and
   // how many read memory the GPU wrote (a resolve's output).
   if (dao_stats::Enabled()) {
@@ -1234,6 +1239,7 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
     ++stats.texture_loads;
     const uint32_t base_address = texture_key.base_page << 12;
     const uint32_t mips_address = texture_key.mip_page << 12;
+    bool gpu_written = false;
     if (load_base) {
       stats.texture_load_bytes += vulkan_texture.GetGuestBaseSize();
     }
@@ -1248,6 +1254,29 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
       ++stats.texture_loads_gpu_written;
       ++stats.texture_loads_gpu_written_by_format[uint32_t(texture_key.format) &
                                                   63];
+      gpu_written = true;
+    }
+    if (!vulkan_texture.dao_loaded_before) {
+      ++stats.texture_loads_first;
+    } else if (gpu_written) {
+      ++stats.texture_loads_again_gpu;
+    } else {
+      ++stats.texture_loads_again_cpu;
+    }
+    vulkan_texture.dao_loaded_before = true;
+    switch (load_shader) {
+      case kLoadShaderIndexDXT1ToRGBA8:
+      case kLoadShaderIndexDXT3ToRGBA8:
+      case kLoadShaderIndexDXT5ToRGBA8:
+      case kLoadShaderIndexDXNToRG8:
+      case kLoadShaderIndexDXT5AToR8:
+        ++stats.texture_loads_bc_decompressed;
+        stats.texture_load_bc_decompressed_bytes +=
+            (load_base ? vulkan_texture.GetGuestBaseSize() : 0) +
+            (load_mips ? vulkan_texture.GetGuestMipsSize() : 0);
+        break;
+      default:
+        break;
     }
   }
 

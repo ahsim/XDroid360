@@ -30,6 +30,7 @@
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/vulkan/dao_draw_fail.h"
+#include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/xenos.h"
@@ -3265,8 +3266,16 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
   const VkDevice device = vulkan_device->device();
   VkPipeline pipeline;
+  // DAO: DAO_GPU_STATS counts the pipelines created and their CPU time.
+  const auto dao_create_start = std::chrono::steady_clock::now();
   VkResult result = dfn.vkCreateGraphicsPipelines(
       device, vk_pipeline_cache_, 1, &pipeline_create_info, nullptr, &pipeline);
+  if (result == VK_SUCCESS) {
+    dao_stats::OnPipelineCreated(uint64_t(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - dao_create_start)
+            .count()));
+  }
   if (result != VK_SUCCESS) {
     if (creation_arguments.pixel_shader) {
       XELOGE(

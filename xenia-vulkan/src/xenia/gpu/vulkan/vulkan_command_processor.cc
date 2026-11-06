@@ -25,6 +25,7 @@
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/vulkan/dao_draw_fail.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
+#include "xenia/gpu/vulkan/dao_vulkan_timing.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
@@ -1194,6 +1195,8 @@ bool VulkanCommandProcessor::SetupContext() {
 void VulkanCommandProcessor::ShutdownContext() {
   AwaitAllQueueOperationsCompletion();
 
+  dao_timing::Shutdown(GetVulkanDevice());  // DAO: DAO_GPU_TIMING.
+
   ShutdownQueryResources();
   host_query_pool_.reset();
 
@@ -1957,10 +1960,12 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
   SplitPendingBarrier();
   if (pending_barriers_.empty()) {
     if (force_end_render_pass) {
+      dao_stats::PendingPassEnd() = dao_stats::PassEnd::kBarrier;  // DAO_GPU_STATS.
       EndRenderPass();
     }
     return false;
   }
+  dao_stats::PendingPassEnd() = dao_stats::PassEnd::kBarrier;  // DAO_GPU_STATS.
   EndRenderPass();
   for (auto it = pending_barriers_.cbegin(); it != pending_barriers_.cend();
        ++it) {
@@ -2004,6 +2009,7 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   }
   if (current_render_pass_ != VK_NULL_HANDLE) {
     // Close VIZ and ZPD queries along with the pass.
+    dao_stats::PendingPassEnd() = dao_stats::PassEnd::kRenderTargets;  // DAO_GPU_STATS.
     EndRenderPass();
   }
   // Clear released ZPD counter slots while no pass is open, so a hybrid query
@@ -2051,8 +2057,10 @@ void VulkanCommandProcessor::EndRenderPass() {
   }
 
   if (current_render_pass_ == VK_NULL_HANDLE) {
+    dao_stats::PendingPassEnd() = dao_stats::PassEnd::kOther;
     return;
   }
+  dao_stats::OnPassEnd();  // DAO: DAO_GPU_STATS, by the caller's reason.
   deferred_command_buffer_.CmdVkEndRenderPass();
   current_render_pass_ = VK_NULL_HANDLE;
   current_framebuffer_ = nullptr;
@@ -3898,6 +3906,7 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenQuery(
       }
 
       if (current_render_pass_ != VK_NULL_HANDLE) {
+        dao_stats::PendingPassEnd() = dao_stats::PassEnd::kQuery;  // DAO_GPU_STATS.
         EndRenderPass();
       }
       if (!EndSubmission(false)) {
@@ -3954,6 +3963,7 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenQuery(
         VkRenderPass saved_render_pass = current_render_pass_;
         const VulkanRenderTargetCache::Framebuffer* saved_framebuffer =
             current_framebuffer_;
+        dao_stats::PendingPassEnd() = dao_stats::PassEnd::kQuery;  // DAO_GPU_STATS.
         EndRenderPass();
         host_query_pool_->ClearCounter(deferred_command_buffer_,
                                        active_query_index_);
@@ -4100,6 +4110,7 @@ bool VulkanCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
     if (!CanEndSubmissionImmediately()) {
       pipeline_cache_->AwaitPipelineCompletion();
     }
+    dao_stats::PendingPassEnd() = dao_stats::PassEnd::kQuery;  // DAO_GPU_STATS.
     EndRenderPass();
     if (!EndSubmission(false)) {
       return false;
@@ -4156,6 +4167,7 @@ void VulkanCommandProcessor::RecordVIZPredicateCopies() {
     // Copies aren't valid inside a render pass, so end it. The draw that
     // needed the predicate value enters its own pass afterwards. Ending the
     // pass records the copies.
+    dao_stats::PendingPassEnd() = dao_stats::PassEnd::kVizPredicate;  // DAO_GPU_STATS.
     EndRenderPass();
     return;
   }
@@ -4429,6 +4441,10 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
   if (!submission_open_) {
     submission_open_ = true;
 
+    // DAO: DAO_GPU_TIMING (dao_vulkan_timing.h).
+    dao_timing::OnBeginSubmission(GetVulkanDevice(), GetCurrentSubmission(),
+                                  GetCompletedSubmission(), frame_current_);
+
     // Start a new deferred command buffer - will submit it to the real one in
     // the end of the submission (when async pipeline object creation requests
     // are fulfilled).
@@ -4626,6 +4642,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
   if (submission_open_) {
     assert_false(scratch_buffer_used_);
 
+    dao_stats::PendingPassEnd() = dao_stats::PassEnd::kSubmission;  // DAO_GPU_STATS.
     EndRenderPass();
 
     render_target_cache_->EndSubmission();
@@ -4713,12 +4730,15 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
       XELOGE("Failed to begin a Vulkan command buffer");
       return false;
     }
+    // DAO: DAO_GPU_TIMING brackets the submission (dao_vulkan_timing.h).
+    dao_timing::OnCommandBufferBegin(vulkan_device, command_buffer.buffer);
     deferred_command_buffer_.Execute(command_buffer.buffer);
 
     // Record query resolves before submitting.
     if (host_query_pool_) {
       host_query_pool_->RecordResolveBatch(command_buffer.buffer);
     }
+    dao_timing::OnCommandBufferEnd(vulkan_device, command_buffer.buffer);
 
     if (dfn.vkEndCommandBuffer(command_buffer.buffer) != VK_SUCCESS) {
       XELOGE("Failed to end a Vulkan command buffer");
