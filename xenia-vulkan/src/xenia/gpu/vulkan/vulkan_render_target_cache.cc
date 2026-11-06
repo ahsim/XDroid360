@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 
 #include "third_party/glslang/SPIRV/GLSL.std.450.h"
 #include "xenia/base/assert.h"
@@ -4793,9 +4794,23 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
     const Transfer::Rectangle* resolve_clear_rectangle) {
   assert_true(GetPath() == Path::kHostRenderTargets);
 
-  // DAO: a group for DAO_GPU_TIMING, and the passes ended for it say so.
-  dao_timing::WorkScope dao_work(command_processor_.deferred_command_buffer(),
-                                 dao_stats::Activity::kTransfer);
+  // DAO: a group for DAO_GPU_TIMING, and the passes ended for it say so - only
+  // when there's something to do: Update calls this for every draw, mostly with
+  // nothing, and a scope each time would fill the timing slots with empties.
+  std::optional<dao_timing::WorkScope> dao_work;
+  {
+    bool dao_has_work =
+        render_target_resolve_clear_values && resolve_clear_rectangle;
+    for (uint32_t i = 0;
+         !dao_has_work && render_target_transfers && i < render_target_count;
+         ++i) {
+      dao_has_work = !render_target_transfers[i].empty();
+    }
+    if (dao_has_work) {
+      dao_work.emplace(command_processor_.deferred_command_buffer(),
+                       dao_stats::Activity::kTransfer);
+    }
+  }
   // DAO: DAO_GPU_STATS (dao_vulkan_stats.h).
   if (render_target_transfers && dao_stats::Enabled()) {
     for (uint32_t i = 0; i < render_target_count; ++i) {
