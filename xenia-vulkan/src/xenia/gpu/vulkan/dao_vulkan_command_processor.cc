@@ -58,6 +58,48 @@ std::string VulkanCommandProcessor::DaoDescribeHostPaths() const {
       texture_cache_->draw_resolution_scale_y());
 }
 
+// The device itself, for a bug report from a phone nobody here has (dao.log): who
+// made it, the driver and its version, and what Xenia relies on or falls back from.
+std::string VulkanCommandProcessor::DaoDescribeDevice() const {
+  const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
+  const ui::vulkan::VulkanDevice::Properties& p = vulkan_device->properties();
+  const ui::vulkan::VulkanInstance::Functions& ifn =
+      vulkan_device->vulkan_instance()->functions();
+  const VkPhysicalDevice physical_device = vulkan_device->physical_device();
+  std::string driver = "?";
+  if (VK_API_VERSION_MINOR(p.apiVersion) >= 2 && ifn.vkGetPhysicalDeviceProperties2) {
+    VkPhysicalDeviceDriverProperties driver_properties = {};
+    driver_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    VkPhysicalDeviceProperties2 properties_2 = {};
+    properties_2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties_2.pNext = &driver_properties;
+    ifn.vkGetPhysicalDeviceProperties2(physical_device, &properties_2);
+    driver = driver_properties.driverName;
+    if (driver_properties.driverInfo[0]) {
+      driver += std::string(" (") + driver_properties.driverInfo + ")";
+    }
+  }
+  auto sampled = [&](VkFormat format) {
+    VkFormatProperties format_properties;
+    ifn.vkGetPhysicalDeviceFormatProperties(physical_device, format, &format_properties);
+    return (format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
+  };
+  auto yes = [](bool b) { return b ? "yes" : "no"; };
+  return fmt::format(
+      "{}, vendor {:#06x} device {:#x}; driver {}, version {:#x}; Vulkan {}.{}.{}; "
+      "independentBlend {}, geometryShader {}, fragmentStoresAndAtomics {}, "
+      "vertexPipelineStoresAndAtomics {}, samplerAnisotropy {}, sparseResidencyBuffer {}, "
+      "shaderClipDistance {}; textures BC1 {}, BC3 {}, BC5 {}, ETC2 {}, ASTC {}",
+      p.deviceName, p.vendorID, p.deviceID, driver, p.driverVersion,
+      VK_API_VERSION_MAJOR(p.apiVersion), VK_API_VERSION_MINOR(p.apiVersion),
+      VK_API_VERSION_PATCH(p.apiVersion), yes(p.independentBlend), yes(p.geometryShader),
+      yes(p.fragmentStoresAndAtomics), yes(p.vertexPipelineStoresAndAtomics),
+      yes(p.samplerAnisotropy), yes(p.sparseResidencyBuffer), yes(p.shaderClipDistance),
+      yes(sampled(VK_FORMAT_BC1_RGBA_UNORM_BLOCK)), yes(sampled(VK_FORMAT_BC3_UNORM_BLOCK)),
+      yes(sampled(VK_FORMAT_BC5_UNORM_BLOCK)), yes(sampled(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK)),
+      yes(sampled(VK_FORMAT_ASTC_4x4_UNORM_BLOCK)));
+}
+
 bool VulkanCommandProcessor::DaoReadGpuWrittenMemory(
     uint32_t address, uint32_t length, uint32_t pixel_size_log2,
     std::vector<uint8_t>& out) {

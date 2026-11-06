@@ -26,7 +26,7 @@ import java.io.IOException;
 /** One game's settings: its details, Play, the driver and graphics switches, saves, the log, Delete. */
 public class InstanceActivity extends AppCompatActivity {
     static final String EXTRA_ID = "instance";
-    private static final String[] DRIVERS = { Instance.DRIVER_BUILTIN, Instance.DRIVER_SYSTEM, Instance.DRIVER_CUSTOM };
+    private static final String[] DRIVERS = { Instance.DRIVER_AUTO, Instance.DRIVER_BUILTIN, Instance.DRIVER_SYSTEM, Instance.DRIVER_CUSTOM };
     private static final String[] SYSMEM = { Instance.SYSMEM_AUTO, Instance.SYSMEM_ON, Instance.SYSMEM_OFF };
 
     private Instance instance;

@@ -44,6 +44,8 @@ import java.util.zip.ZipOutputStream;
  */
 public class BugReportActivity extends AppCompatActivity {
     private final List<Instance> instances = new ArrayList<>();
+    /** Builds that failed or stopped: a game that didn't get installed can be reported too. */
+    private final List<BuildJob> builds = new ArrayList<>();
     private Spinner instance;
     /** Whether the first row is "Choose the game" (more than one game). */
     private boolean chooseRow;
@@ -69,10 +71,12 @@ public class BugReportActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         instances.addAll(Instance.list(this));
-        chooseRow = instances.size() > 1;
+        for (BuildJob j : BuildJob.unfinished(this)) if (!BuildService.isRunning(j.id)) builds.add(j);
+        chooseRow = instances.size() + builds.size() > 1;
         List<String> names = new ArrayList<>();
         if (chooseRow) names.add(getString(R.string.bug_report_pick_game));
         for (Instance i : instances) names.add(i.name + " — " + i.buildLabel());
+        for (BuildJob j : builds) names.add(j.name + " — " + getString(R.string.bug_report_build_failed));
         instance = findViewById(R.id.instance);
         ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, names);
         a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -106,9 +110,15 @@ public class BugReportActivity extends AppCompatActivity {
         return i >= 0 && i < instances.size() ? instances.get(i) : null;
     }
 
+    /** The failed build chosen instead of a game, or null. */
+    private BuildJob selectedBuild() {
+        int i = instance.getSelectedItemPosition() - (chooseRow ? 1 : 0) - instances.size();
+        return i >= 0 && i < builds.size() ? builds.get(i) : null;
+    }
+
     /** Sending waits for a game to be chosen (with no games at all, the report has the device only). */
     private void updateButtons() {
-        boolean ready = !chooseRow || selected() != null;
+        boolean ready = !chooseRow || selected() != null || selectedBuild() != null;
         email.setEnabled(ready);
         saveButton.setEnabled(ready);
     }
@@ -124,8 +134,12 @@ public class BugReportActivity extends AppCompatActivity {
             }
             Uri attach = FileProvider.getUriForFile(this, getPackageName() + ".files", zip);
             Instance game = selected();
-            String subject = "XDroid360 bug report" + (game != null ? ": " + game.name : "");
-            String body = (game != null ? "Game: " + game.name + " (" + game.buildLabel() + ")\n" : "")
+            BuildJob build = selectedBuild();
+            String subject = "XDroid360 bug report" + (game != null ? ": " + game.name
+                    : build != null ? ": " + build.name + " (build)" : "");
+            String body = (game != null ? "Game: " + game.name + " (" + game.buildLabel() + ")\n"
+                    : build != null ? "Build: " + build.name + ", " + build.state + " at " + build.failedStep
+                            + " (" + build.errorCode + ")\n" : "")
                     + deviceInfo() + "\n\nWhat happened:\n";
             Intent send = new Intent(Intent.ACTION_SEND)
                     .setType("application/zip")
@@ -229,6 +243,21 @@ public class BugReportActivity extends AppCompatActivity {
                     }
                 }
             }
+            BuildJob build = selectedBuild();
+            if (build != null) {
+                // The build's job (state, failed step, error) and its logs: the failed step's,
+                // and each compile's (the one that failed is the newest).
+                putFile(zip, "build.json", new File(build.internal(this), "build.json"));
+                File logs = new File(build.work(this), "logs");
+                List<File> files = new ArrayList<>();
+                collect(logs, files);
+                files.sort((x, y) -> Long.compare(y.lastModified(), x.lastModified()));
+                long total = 0;
+                for (File f : files) {
+                    if (f.length() > MAX_FILE || (total += f.length()) > 4 * MAX_FILE) continue;
+                    putFile(zip, "build-logs/" + logs.toURI().relativize(f.toURI()).getPath(), f);
+                }
+            }
             // Android gives an app only its own log; the newest lines are the ones about the bug.
             put(zip, "logcat.txt", run("logcat", "-d", "-v", "time", "-t", "5000"));
             put(zip, "crash.txt", run("logcat", "-d", "-b", "crash", "-v", "time"));
@@ -241,16 +270,59 @@ public class BugReportActivity extends AppCompatActivity {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) {
         }
-        String gpu = "?";
-        try (InputStream in = new FileInputStream("/sys/class/kgsl/kgsl-3d0/gpu_model")) {
-            gpu = new String(readAll(in), StandardCharsets.UTF_8).trim();
-        } catch (IOException ignored) {
-        }
+        // The GPU as its own driver names it (Adreno's kernel file exists on Adreno only).
+        String gpu = glRenderer();
+        String adreno = GameActivity.gpuModel();
+        if (!adreno.isEmpty()) gpu += " (" + adreno + ")";
         return "XDroid360 " + version + " (abi " + GameActivity.DAO_ABI + ")"
                 + "\nDevice: " + Build.MANUFACTURER + " " + Build.MODEL
                 + "\nAndroid: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
                 + "\nSoC: " + (Build.VERSION.SDK_INT >= 31 ? Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL : "?")
                 + "\nGPU: " + gpu;
+    }
+
+    /** "Mali-G720-Immortalis MC12 (ARM, OpenGL ES 3.2 v1.r...)": from a throwaway GLES context. */
+    private static String glRenderer() {
+        android.opengl.EGLDisplay display = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY);
+        if (display == android.opengl.EGL14.EGL_NO_DISPLAY) return "?";
+        int[] version = new int[2];
+        if (!android.opengl.EGL14.eglInitialize(display, version, 0, version, 1)) return "?";
+        try {
+            int[] attribs = { android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
+                              android.opengl.EGL14.EGL_SURFACE_TYPE, android.opengl.EGL14.EGL_PBUFFER_BIT,
+                              android.opengl.EGL14.EGL_NONE };
+            android.opengl.EGLConfig[] configs = new android.opengl.EGLConfig[1];
+            int[] count = new int[1];
+            if (!android.opengl.EGL14.eglChooseConfig(display, attribs, 0, configs, 0, 1, count, 0) || count[0] == 0) return "?";
+            android.opengl.EGLContext context = android.opengl.EGL14.eglCreateContext(display, configs[0],
+                    android.opengl.EGL14.EGL_NO_CONTEXT, new int[] { android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, android.opengl.EGL14.EGL_NONE }, 0);
+            android.opengl.EGLSurface surface = android.opengl.EGL14.eglCreatePbufferSurface(display, configs[0],
+                    new int[] { android.opengl.EGL14.EGL_WIDTH, 1, android.opengl.EGL14.EGL_HEIGHT, 1, android.opengl.EGL14.EGL_NONE }, 0);
+            try {
+                if (!android.opengl.EGL14.eglMakeCurrent(display, surface, surface, context)) return "?";
+                return android.opengl.GLES20.glGetString(android.opengl.GLES20.GL_RENDERER) + " ("
+                        + android.opengl.GLES20.glGetString(android.opengl.GLES20.GL_VENDOR) + ", "
+                        + android.opengl.GLES20.glGetString(android.opengl.GLES20.GL_VERSION) + ")";
+            } finally {
+                android.opengl.EGL14.eglMakeCurrent(display, android.opengl.EGL14.EGL_NO_SURFACE,
+                        android.opengl.EGL14.EGL_NO_SURFACE, android.opengl.EGL14.EGL_NO_CONTEXT);
+                android.opengl.EGL14.eglDestroySurface(display, surface);
+                android.opengl.EGL14.eglDestroyContext(display, context);
+            }
+        } catch (RuntimeException e) {
+            return "?";
+        } finally {
+            android.opengl.EGL14.eglTerminate(display);
+        }
+    }
+
+    private static void collect(File dir, List<File> out) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File c : children) {
+            if (c.isDirectory()) collect(c, out);
+            else out.add(c);
+        }
     }
 
     private static byte[] run(String... command) {

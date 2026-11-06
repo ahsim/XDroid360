@@ -13,6 +13,7 @@
     <string name="setting_driver">Драйвер Vulkan</string>
     <string name="setting_driver_pick">Выбрать файл драйвера (.so или .zip)…</string>
     <string-array name="drivers">
+        <item>Автоматически (Turnip на Adreno 8xx, иначе драйвер телефона)</item>
         <item>Встроенный Turnip (Adreno 8xx)</item>
         <item>Родной драйвер телефона</item>
         <item>Свой драйвер</item>
@@ -58,6 +59,7 @@
     <string name="bug_report_title">Сообщить об ошибке</string>
     <string name="bug_report_intro">Что-то пошло не так? Отправьте отчёт.</string>
     <string name="bug_report_pick_game">Выберите игру</string>
+    <string name="bug_report_build_failed">сборка не закончилась</string>
     <string name="bug_report_game">Игра</string>
     <string name="bug_report_steps">1. Выберите игру выше.\n2. Нажмите «Отправить по почте».\n3. Выберите почтовое приложение (Gmail, Outlook…).\n4. Напишите пару слов о том, что случилось, и отправьте.</string>
     <string name="bug_report_send_email">Отправить по почте</string>

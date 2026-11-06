@@ -24,7 +24,8 @@ final class Instance {
     static final String DAO_TITLE_ID = "454108C0";
 
     // Settings, kept in instance.json.
-    static final String DRIVER_BUILTIN = "builtin", DRIVER_SYSTEM = "system", DRIVER_CUSTOM = "custom";
+    /** auto: the built-in Turnip on an Adreno 8xx (what it is made for), else the phone's own. */
+    static final String DRIVER_AUTO = "auto", DRIVER_BUILTIN = "builtin", DRIVER_SYSTEM = "system", DRIVER_CUSTOM = "custom";
     static final String SYSMEM_AUTO = "auto", SYSMEM_ON = "on", SYSMEM_OFF = "off";
 
     final String id;
@@ -33,7 +34,7 @@ final class Instance {
     final File library;
     String name;
     JSONObject manifest; // the package's manifest.json (empty for the development build)
-    String driver = DRIVER_BUILTIN;
+    String driver = DRIVER_AUTO;
     String sysmem = SYSMEM_AUTO;
     // New instances start at the lowest texture detail: a phone's memory and bandwidth, not the
     // console's (the choice stays in the settings).

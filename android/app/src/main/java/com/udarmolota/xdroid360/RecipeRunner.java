@@ -324,10 +324,31 @@ final class RecipeRunner {
         final int count = files.size();
         boolean stopOnFailure = !"continue".equals(step.optString("fail", "stop"));
         AtomicReference<Recipe.Failure> failure = new AtomicReference<>();
+        // Up to a job per core, each started only when the memory it is expected to take is free
+        // (MemAvailable less the reserve; the recipe's "jobs"), re-checked a moment after the
+        // previous start (a compile's memory grows over its first seconds) and whenever a job ends.
         ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(jobs, Math.max(1, todo.size()))));
         List<Future<?>> futures = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger active = new java.util.concurrent.atomic.AtomicInteger();
+        long lastStart = 0;
         for (File f : todo) {
+            long need = estimateMb(f);
+            while (!cancelled.get() && !(stopOnFailure && failure.get() != null)) {
+                long since = System.currentTimeMillis() - lastStart;
+                int now = active.get();
+                if (now == 0 || (now < jobs && since >= ADMIT_SETTLE_MS && memAvailableMb() - reserveMb() >= need)) break;
+                try {
+                    Thread.sleep(250);
+                } catch (InterruptedException e) {
+                    cancel();
+                    break;
+                }
+            }
+            if (cancelled.get() || (stopOnFailure && failure.get() != null)) break;
+            active.incrementAndGet();
+            lastStart = System.currentTimeMillis();
             futures.add(pool.submit(() -> {
+              try {
                 if (cancelled.get() || (stopOnFailure && failure.get() != null)) return;
                 File obj = new File(dir, objectName(f));
                 File tmp = new File(obj.getPath() + ".tmp");
@@ -357,6 +378,9 @@ final class RecipeRunner {
                 } catch (IOException e) {
                     failure.compareAndSet(null, new Recipe.Failure(noSpace(e) ? "not_enough_space" : defaultCode(step), e.toString()));
                 }
+              } finally {
+                active.decrementAndGet();
+              }
             }));
         }
         pool.shutdown();
@@ -448,6 +472,22 @@ final class RecipeRunner {
         pb.environment().put("TMPDIR", new File(work, "tmp").getPath());
         Process p = pb.start();
         running.add(p);
+        // The tool's peak memory (VmHWM), into its log: what the recipes' "jobs" numbers come from.
+        java.util.concurrent.atomic.AtomicLong peak = new java.util.concurrent.atomic.AtomicLong();
+        long pid = pid(p);
+        Thread watch = pid > 0 ? new Thread(() -> {
+            File status = new File("/proc/" + pid + "/status");
+            while (p.isAlive()) {
+                long kb = statusKb(status, "VmHWM:");
+                if (kb > 0) peak.set(kb);
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+        }, "rss " + pid) : null;
+        if (watch != null) watch.start();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
              Writer w = new FileWriter(log)) {
             w.write(String.join(" ", argv) + "\n\n");
@@ -457,7 +497,9 @@ final class RecipeRunner {
                 w.write('\n');
                 if (lines != null) lines.line(line);
             }
-            return p.waitFor();
+            int code = p.waitFor();
+            if (peak.get() > 0) w.write("\n[XDroid360] peak RSS " + (peak.get() >> 10) + " MB\n");
+            return code;
         } catch (InterruptedException e) {
             p.destroyForcibly();
             throw new Recipe.Failure("cancelled", "");
@@ -568,14 +610,46 @@ final class RecipeRunner {
         listener.onProgress(Math.min(1, (weightDone + withinStep) / weightTotal), stepLabel, detail);
     }
 
-    /** ${JOBS}: min(cores, (MemAvailable - reserve_mb) / max_rss_mb), at least 1. */
+    /** How long a new compile gets to grow before the memory is looked at again. */
+    private static final long ADMIT_SETTLE_MS = 2000;
+
+    /** ${JOBS}: the cap on parallel jobs, the core count; memory admits each one (estimateMb). */
     private static int jobs(Recipe recipe) {
-        int cores = Runtime.getRuntime().availableProcessors();
+        return Math.max(1, Runtime.getRuntime().availableProcessors());
+    }
+
+    private long reserveMb() {
         JSONObject j = recipe.json.optJSONObject("jobs");
-        long rss = j != null ? j.optLong("max_rss_mb", 600) : 600, reserve = j != null ? j.optLong("reserve_mb", 1024) : 1024;
-        long available = memAvailableMb();
-        int byMemory = available > 0 && rss > 0 ? (int) ((available - reserve) / rss) : cores;
-        return Math.max(1, Math.min(cores, byMemory));
+        return j != null ? j.optLong("reserve_mb", 1024) : 1024;
+    }
+
+    /**
+     * The memory a compile of input is expected to take: the recipe's optional
+     * rss_model (base_mb + per_mb x the input's MiB), else its max_rss_mb.
+     */
+    private long estimateMb(File input) {
+        JSONObject j = recipe.json.optJSONObject("jobs");
+        long max = j != null ? j.optLong("max_rss_mb", 600) : 600;
+        JSONObject model = j != null ? j.optJSONObject("rss_model") : null;
+        if (model == null) return max;
+        return (long) (model.optDouble("base_mb", max) + model.optDouble("per_mb", 0) * input.length() / (1024.0 * 1024.0));
+    }
+
+    /** A child's pid, from its toString ("Process[pid=1234, hasExited=false]" on Android). */
+    private static long pid(Process p) {
+        Matcher m = Pattern.compile("pid=(\\d+)").matcher(p.toString());
+        return m.find() ? Long.parseLong(m.group(1)) : -1;
+    }
+
+    private static long statusKb(File status, String key) {
+        try (BufferedReader r = new BufferedReader(new java.io.FileReader(status))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.startsWith(key)) return Long.parseLong(line.replaceAll("[^0-9]", ""));
+            }
+        } catch (IOException | NumberFormatException ignored) {
+        }
+        return -1;
     }
 
     private static long memAvailableMb() {

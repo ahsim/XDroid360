@@ -157,6 +157,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // game's log; the launcher's device check predicts the same from outside.
   // On the command processor thread, after SetupContext (CallInThread).
   std::string DaoDescribeHostPaths() const;
+  std::string DaoDescribeDevice() const;
 
   void ClearCaches() override;
 

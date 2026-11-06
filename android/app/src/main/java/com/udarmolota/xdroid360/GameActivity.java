@@ -349,9 +349,26 @@ public class GameActivity extends SDLActivity {
         return chosenDriver(this, current, install);
     }
 
+    /** The Adreno model from the kernel's GPU driver ("Adreno830v2"), or "" on other GPUs. */
+    static String gpuModel() {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/sys/class/kgsl/kgsl-3d0/gpu_model"))) {
+            String s = r.readLine();
+            return s != null ? s.trim() : "";
+        } catch (java.io.IOException | SecurityException e) {
+            return "";
+        }
+    }
+
     /** As above, for an instance (null: the dev entry). */
     static File chosenDriver(Context context, Instance current, File install) {
         String choice = current != null ? current.driver : Instance.DRIVER_CUSTOM;
+        if (Instance.DRIVER_AUTO.equals(choice)) {
+            // Turnip Gen8 is for Adreno 8xx only: any other GPU (Mali, Xclipse, an older Adreno)
+            // gets the phone's own driver unless the player installs one.
+            String gpu = gpuModel();
+            choice = gpu.startsWith("Adreno8") ? Instance.DRIVER_BUILTIN : Instance.DRIVER_SYSTEM;
+            Log.i(TAG, "Driver auto: GPU '" + gpu + "' -> " + choice);
+        }
         if (Instance.DRIVER_SYSTEM.equals(choice)) {
             return null;
         }

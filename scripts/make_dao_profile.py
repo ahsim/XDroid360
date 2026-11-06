@@ -39,7 +39,7 @@ RECOMP = ROOT / "recomp"
 LLVM = RECOMP / "tools" / "llvm" / "bin"
 NINJA = RECOMP / "tools" / "ninja" / ("ninja.exe" if os.name == "nt" else "ninja")
 DEFAULT_KIT = ROOT.parent / "SD1" / "toolchain" / "out" / "kit"
-VERSION = "dao-1"
+VERSION = "dao-2"
 TITLE_ID = "454108C0"
 # Linked whole into dao-game, or compiled on the phone: not in dao-deps.
 # libdxbc.a: Xenia's DXBC checksum (AMD, no licence grant) is D3D12-only: the Vulkan build never
@@ -219,7 +219,7 @@ def recipe(kit, xex_sha256, headers):
         "space": {"game_mb": 6800, "work_mb": 1000, "install_mb": 300},
         "inputs": {"xex": {"path": "${GAME}/game/default.xex", "sha256": [xex_sha256]}},
         "vars": {"CXXFLAGS": cxx, "PPCFLAGS": ppcflags, "PCH": pch},
-        "jobs": {"max_rss_mb": 450, "reserve_mb": 1024},
+        "jobs": {"max_rss_mb": 400, "reserve_mb": 768},
         "steps": [
             {"id": "extract", "kind": "extract", "label": "Extracting game files", "weight": 120,
              "format": "xiso", "to": "${GAME}", "keeps_game": True},

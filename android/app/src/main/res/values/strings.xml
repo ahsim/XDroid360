@@ -15,6 +15,7 @@
     <string name="setting_driver">Vulkan driver</string>
     <string name="setting_driver_pick">Choose a driver file (.so or .zip)…</string>
     <string-array name="drivers">
+        <item>Automatic (Turnip on Adreno 8xx, else the phone\'s own)</item>
         <item>Built-in Turnip (Adreno 8xx)</item>
         <item>The phone\'s own driver</item>
         <item>Custom driver</item>
@@ -61,6 +62,7 @@
     <string name="bug_report_title">Report a bug</string>
     <string name="bug_report_intro">Something went wrong? Send a report.</string>
     <string name="bug_report_pick_game">Choose the game</string>
+    <string name="bug_report_build_failed">the build didn\'t finish</string>
     <string name="bug_report_game">Game</string>
     <string name="bug_report_steps">1. Choose the game above.\n2. Tap Send by email.\n3. Pick your mail app (Gmail, Outlook…).\n4. Write a few words about what happened and send.</string>
     <string name="bug_report_send_email">Send by email</string>
