@@ -105,11 +105,14 @@ namespace dao::app
         const int rate = dao::gpu::FrameRate(); // 0: unlimited
         if (nativeWindow == s_window && rate == s_rate)
             return;
-        // Above 60, or unlimited: the phone's own choice (0).
-        const float hz = rate > 0 && rate <= 60 ? float(rate) : 0.0f;
+        // Twice the cap: frames repeat exactly while the game holds it, and a frame that
+        // misses it waits for a finer grid of refreshes than the cap's own. A cap of 30 thus
+        // asks for 60 Hz; 60 and above, or unlimited, leave the phone its own choice (0), as
+        // asking 120 could land a 90 Hz panel on 60.
+        const float hz = rate > 0 && rate <= 30 ? float(rate * 2) : 0.0f;
         constexpr int8_t kFixedSource = 1; // ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
         const int32_t result = setFrameRate(nativeWindow, hz, kFixedSource);
-        LOGI("Display refresh: {} (result {})", hz > 0 ? fmt::format("{} Hz requested", rate) : std::string("the phone's"),
+        LOGI("Display refresh: {} (result {})", hz > 0 ? fmt::format("{} Hz requested for a {} fps cap", int(hz), rate) : std::string("the phone's"),
             result);
         s_window = nativeWindow;
         s_rate = rate;
