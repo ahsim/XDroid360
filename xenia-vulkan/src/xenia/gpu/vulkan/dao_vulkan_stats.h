@@ -45,6 +45,8 @@ struct Counters {
   uint64_t z_late_float24 = 0;  // 20e4 depth converted in the shader.
   uint64_t z_late_query = 0;   // Occlusion query counting in the shader.
   uint64_t z_late_write = 0;   // Late ones that also write depth.
+  // GPU-written texture loads by the texture's (base) xenos::TextureFormat.
+  uint64_t texture_loads_gpu_written_by_format[64] = {};
 };
 
 inline bool Enabled() {
@@ -110,6 +112,13 @@ inline void OnSwap(uint32_t draws_issued) {
     return;
   }
   const double f = double(c.frames);
+  std::string by_format;
+  for (uint32_t i = 0; i < 64; ++i) {
+    if (c.texture_loads_gpu_written_by_format[i]) {
+      by_format += fmt::format(" {}:{:.1f}", i,
+                               c.texture_loads_gpu_written_by_format[i] / f);
+    }
+  }
   const std::string line = fmt::format(
       "GPU stats: {} frames in {:.1f} s, per frame: draws {:.0f}, passes "
       "{:.0f}, resolves {:.1f} ({:.2f} MP, {:.1f} with clear), transfers "
@@ -117,7 +126,8 @@ inline void OnSwap(uint32_t draws_issued) {
       "memory), uploads {:.1f} ({:.2f} MB), readbacks {:.2f} ({:.2f} MB), "
       "submissions {:.1f}, CPU waited for the GPU {:.2f} ms, depth-tested "
       "draws: early {:.0f}, late {:.0f} (shader {:.0f}, alpha {:.0f}, "
-      "offset {:.0f}, float24 {:.0f}, query {:.0f}; {:.0f} writing depth)",
+      "offset {:.0f}, float24 {:.0f}, query {:.0f}; {:.0f} writing depth), "
+      "GPU-written loads by texture format:{}",
       c.frames, seconds, c.draws / f, c.passes / f, c.resolves / f,
       c.resolve_pixels / f / 1e6, c.resolve_clears / f, c.transfers / f,
       c.texture_loads / f, c.texture_load_bytes / f / 1048576.0,
@@ -128,7 +138,8 @@ inline void OnSwap(uint32_t draws_issued) {
       (c.z_late_shader + c.z_late_alpha + c.z_late_offset + c.z_late_float24 +
        c.z_late_query) / f,
       c.z_late_shader / f, c.z_late_alpha / f, c.z_late_offset / f,
-      c.z_late_float24 / f, c.z_late_query / f, c.z_late_write / f);
+      c.z_late_float24 / f, c.z_late_query / f, c.z_late_write / f,
+      by_format.empty() ? std::string(" none") : by_format);
   if (ReportSink()) {
     ReportSink()(line.c_str());
   } else {

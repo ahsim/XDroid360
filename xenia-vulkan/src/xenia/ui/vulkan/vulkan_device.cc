@@ -10,6 +10,7 @@
 #include "xenia/ui/vulkan/vulkan_device.h"
 
 #include "xenia/base/assert.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 
@@ -18,6 +19,29 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// DAO: switches that hide what a strong GPU has, so a phone with it (an Adreno)
+// takes the paths a weaker one (a Mali) takes, for reproducing and measuring
+// them locally. All off by default; toggled per run in config.toml [xenia].
+// The device then reports the feature as absent everywhere (properties(),
+// extensions(), the device listing in the log).
+DEFINE_bool(dao_disable_geometry_shader, false,
+            "DAO (testing): act as if the GPU had no geometry shaders (points "
+            "and rectangles expanded in the vertex shader, as on PanVK).",
+            "Vulkan");
+DEFINE_bool(dao_disable_conditional_rendering, false,
+            "DAO (testing): don't use VK_EXT_conditional_rendering (VIZ "
+            "queries wait for the GPU, as on the stock Mali driver).",
+            "Vulkan");
+DEFINE_bool(dao_disable_stencil_export, false,
+            "DAO (testing): don't use VK_EXT_shader_stencil_export (the "
+            "per-bit stencil path in render target transfers, as on the stock "
+            "Mali driver).",
+            "Vulkan");
+DEFINE_bool(dao_disable_bc_textures, false,
+            "DAO (testing): decompress BC1-BC5 textures to RGBA8 / R8 / RG8 "
+            "even if the GPU samples them (as on Mali).",
+            "Vulkan");
 
 namespace xe {
 namespace ui {
@@ -82,6 +106,24 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
 
   VkPhysicalDeviceFeatures supported_features = {};
   ifn.vkGetPhysicalDeviceFeatures(physical_device, &supported_features);
+  // DAO: testing switches (see the top of the file).
+  if (with_gpu_emulation) {
+    if (cvars::dao_disable_geometry_shader) {
+      supported_features.geometryShader = VK_FALSE;
+    }
+    if (cvars::dao_disable_geometry_shader ||
+        cvars::dao_disable_conditional_rendering ||
+        cvars::dao_disable_stencil_export || cvars::dao_disable_bc_textures) {
+      XELOGW(
+          "Vulkan device '{}': testing switches on: geometry shader {}, "
+          "conditional rendering {}, stencil export {}, BC textures {}",
+          properties.deviceName,
+          cvars::dao_disable_geometry_shader ? "off" : "as supported",
+          cvars::dao_disable_conditional_rendering ? "off" : "as supported",
+          cvars::dao_disable_stencil_export ? "off" : "as supported",
+          cvars::dao_disable_bc_textures ? "decompressed" : "as supported");
+    }
+  }
 
   if (with_gpu_emulation) {
     if (!supported_features.independentBlend) {
@@ -189,7 +231,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     // #70. Must be enabled for VK_KHR_sampler_ycbcr_conversion.
     XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(KHR_maintenance1, 1, 1)
     // #141.
-    XE_UI_VULKAN_STRUCT_EXTENSION(EXT_shader_stencil_export)
+    // DAO: unless a testing switch hides it.
+    if (!cvars::dao_disable_stencil_export) {
+      XE_UI_VULKAN_STRUCT_EXTENSION(EXT_shader_stencil_export)
+    }
     // #148.
     XE_UI_VULKAN_STRUCT_PROMOTED_EXTENSION(KHR_image_format_list, 1, 2)
     if (get_physical_device_properties2_supported) {
@@ -201,7 +246,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(KHR_shader_float_controls, 1, 2)
       XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(EXT_host_query_reset, 1, 2)
       // #82.
-      XE_UI_VULKAN_STRUCT_EXTENSION(EXT_conditional_rendering)
+      // DAO: unless a testing switch hides it.
+      if (!cvars::dao_disable_conditional_rendering) {
+        XE_UI_VULKAN_STRUCT_EXTENSION(EXT_conditional_rendering)
+      }
       // #252.
       XE_UI_VULKAN_LOCAL_EXTENSION(EXT_fragment_shader_interlock)
       // #277.

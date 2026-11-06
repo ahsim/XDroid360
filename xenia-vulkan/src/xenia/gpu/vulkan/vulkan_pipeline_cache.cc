@@ -29,6 +29,7 @@
 #include "xenia/gpu/spirv_builder.h"
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/vulkan/dao_draw_fail.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/xenos.h"
@@ -664,6 +665,9 @@ bool VulkanPipelineCache::ConfigurePipeline(
           vertex_shader, pixel_shader, primitive_processing_result,
           normalized_depth_control, normalized_color_mask, render_pass_key,
           zpd_total, viz_survey, description)) {
+    dao_draw_fail::Report(
+        dao_draw_fail::Reason::kPipelineState,
+        uint32_t(primitive_processing_result.host_primitive_type));
     return false;
   }
   if (last_pipeline_ && last_pipeline_->first == description) {
@@ -697,6 +701,7 @@ bool VulkanPipelineCache::ConfigurePipeline(
               .GetSamplerBindingsAfterTranslation()
               .size());
   if (!pipeline_layout) {
+    dao_draw_fail::Report(dao_draw_fail::Reason::kPipelineLayout);
     return false;
   }
 
@@ -711,6 +716,8 @@ bool VulkanPipelineCache::ConfigurePipeline(
         geometry_shader_key);
     geometry_shader = GetGeometryShader(geometry_shader_key);
     if (geometry_shader == VK_NULL_HANDLE) {
+      dao_draw_fail::Report(dao_draw_fail::Reason::kGeometryShader,
+                            uint32_t(description.geometry_shader));
       return false;
     }
   }
@@ -722,6 +729,8 @@ bool VulkanPipelineCache::ConfigurePipeline(
           : render_target_cache_.GetHostRenderTargetsRenderPass(
                 render_pass_key);
   if (render_pass == VK_NULL_HANDLE) {
+    dao_draw_fail::Report(dao_draw_fail::Reason::kRenderPass,
+                          render_pass_key.key);
     return false;
   }
 
@@ -768,6 +777,7 @@ bool VulkanPipelineCache::ConfigurePipeline(
           "patch {}",
           static_cast<uint32_t>(description.tessellation_mode),
           static_cast<uint32_t>(description.tessellation_patch));
+      dao_draw_fail::Report(dao_draw_fail::Reason::kTessellationShaders);
       return false;
     }
   }
@@ -1499,13 +1509,21 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
 }
 
 bool VulkanPipelineCache::ArePipelineRequirementsMet(
-    const PipelineDescription& description) const {
-  if (description.zpd_total && !zpd_hybrid_supported_) {
+    const PipelineDescription& description, uint32_t* unmet_out) const {
+  // DAO: which requirement failed, for dao_draw_fail.
+  using dao_draw_fail::RequirementUnmet;
+  auto unmet = [unmet_out](RequirementUnmet requirement) {
+    if (unmet_out) {
+      *unmet_out = uint32_t(requirement);
+    }
     return false;
+  };
+  if (description.zpd_total && !zpd_hybrid_supported_) {
+    return unmet(RequirementUnmet::kZpdHybrid);
   }
   if (description.viz_survey &&
       viz_survey_depth_only_fragment_shader_ == VK_NULL_HANDLE) {
-    return false;
+    return unmet(RequirementUnmet::kVizSurveyShader);
   }
 
   VkShaderStageFlags vertex_shader_stage =
@@ -1516,7 +1534,7 @@ bool VulkanPipelineCache::ArePipelineRequirementsMet(
           ? VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
           : VK_SHADER_STAGE_VERTEX_BIT;
   if (!(guest_shader_vertex_stages_ & vertex_shader_stage)) {
-    return false;
+    return unmet(RequirementUnmet::kVertexShaderStage);
   }
 
   const ui::vulkan::VulkanDevice::Properties& device_properties =
@@ -1524,27 +1542,27 @@ bool VulkanPipelineCache::ArePipelineRequirementsMet(
 
   if (!device_properties.geometryShader &&
       description.geometry_shader != PipelineGeometryShader::kNone) {
-    return false;
+    return unmet(RequirementUnmet::kGeometryShader);
   }
 
   if (!device_properties.triangleFans &&
       description.primitive_topology ==
           PipelinePrimitiveTopology::kTriangleFan) {
-    return false;
+    return unmet(RequirementUnmet::kTriangleFans);
   }
 
   if (!device_properties.depthClamp && description.depth_clamp_enable) {
-    return false;
+    return unmet(RequirementUnmet::kDepthClamp);
   }
 
   if (!device_properties.pointPolygons &&
       description.polygon_mode == PipelinePolygonMode::kPoint) {
-    return false;
+    return unmet(RequirementUnmet::kPointPolygons);
   }
 
   if (!device_properties.fillModeNonSolid &&
       description.polygon_mode != PipelinePolygonMode::kFill) {
-    return false;
+    return unmet(RequirementUnmet::kFillModeNonSolid);
   }
 
   assert_true(device_properties.independentBlend);
@@ -1565,7 +1583,7 @@ bool VulkanPipelineCache::ArePipelineRequirementsMet(
               PipelineBlendFactor::kConstantAlpha ||
           color_rt.dst_color_blend_factor ==
               PipelineBlendFactor::kOneMinusConstantAlpha) {
-        return false;
+        return unmet(RequirementUnmet::kConstantAlphaBlend);
       }
     }
   }
@@ -2709,7 +2727,10 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   }
 
   const PipelineDescription& description = creation_arguments.pipeline->first;
-  if (!ArePipelineRequirementsMet(description)) {
+  uint32_t requirement_unmet = 0;
+  if (!ArePipelineRequirementsMet(description, &requirement_unmet)) {
+    dao_draw_fail::Report(dao_draw_fail::Reason::kPipelineRequirements,
+                          requirement_unmet);
     assert_always(
         "When creating a new pipeline, the description must not require "
         "unsupported features, and when loading the pipeline storage, "
@@ -2734,6 +2755,7 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   // Vertex shader or tessellation evaluation shader.
   assert_true(creation_arguments.vertex_shader->is_translated());
   if (!creation_arguments.vertex_shader->is_valid()) {
+    dao_draw_fail::Report(dao_draw_fail::Reason::kVertexShaderInvalid);
     return false;
   }
 
@@ -2825,6 +2847,7 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   } else if (creation_arguments.pixel_shader) {
     assert_true(creation_arguments.pixel_shader->is_translated());
     if (!creation_arguments.pixel_shader->is_valid()) {
+      dao_draw_fail::Report(dao_draw_fail::Reason::kPixelShaderInvalid);
       return false;
     }
     shader_stage_fragment.module =
@@ -2890,6 +2913,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
       input_assembly_state.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
       assert_false(description.primitive_restart);
       if (description.primitive_restart) {
+        dao_draw_fail::Report(dao_draw_fail::Reason::kPrimitiveRestart,
+                              uint32_t(description.primitive_topology));
         return false;
       }
       break;
@@ -2897,6 +2922,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
       input_assembly_state.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
       assert_false(description.primitive_restart);
       if (description.primitive_restart) {
+        dao_draw_fail::Report(dao_draw_fail::Reason::kPrimitiveRestart,
+                              uint32_t(description.primitive_topology));
         return false;
       }
       break;
@@ -2907,6 +2934,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
       input_assembly_state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
       assert_false(description.primitive_restart);
       if (description.primitive_restart) {
+        dao_draw_fail::Report(dao_draw_fail::Reason::kPrimitiveRestart,
+                              uint32_t(description.primitive_topology));
         return false;
       }
       break;
@@ -2921,6 +2950,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
           VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY;
       assert_false(description.primitive_restart);
       if (description.primitive_restart) {
+        dao_draw_fail::Report(dao_draw_fail::Reason::kPrimitiveRestart,
+                              uint32_t(description.primitive_topology));
         return false;
       }
       break;
@@ -2928,6 +2959,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
       input_assembly_state.topology = VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
       assert_false(description.primitive_restart);
       if (description.primitive_restart) {
+        dao_draw_fail::Report(dao_draw_fail::Reason::kPrimitiveRestart,
+                              uint32_t(description.primitive_topology));
         return false;
       }
       break;
@@ -3249,6 +3282,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
           creation_arguments.vertex_shader->shader().ucode_data_hash(),
           is_tessellated, static_cast<int>(result));
     }
+    dao_draw_fail::Report(dao_draw_fail::Reason::kPipelineCreation,
+                          int64_t(result));
     return false;
   }
 

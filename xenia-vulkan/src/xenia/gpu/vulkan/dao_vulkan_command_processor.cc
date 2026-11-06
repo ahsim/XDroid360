@@ -6,6 +6,12 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
+#include "xenia/base/cvar.h"
+
+DECLARE_bool(dao_disable_bc_textures);
+DECLARE_bool(dao_disable_geometry_shader);
+DECLARE_bool(dao_disable_conditional_rendering);
+DECLARE_bool(dao_disable_stencil_export);
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
 
@@ -31,6 +37,9 @@ std::string VulkanCommandProcessor::DaoDescribeHostPaths() const {
     VkFormatProperties format_properties;
     ifn.vkGetPhysicalDeviceFormatProperties(vulkan_device->physical_device(),
                                             bc.second, &format_properties);
+    if (cvars::dao_disable_bc_textures) {
+      format_properties.optimalTilingFeatures = 0;
+    }
     constexpr VkFormatFeatureFlags kLinearFilterFeatures =
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
@@ -39,10 +48,22 @@ std::string VulkanCommandProcessor::DaoDescribeHostPaths() const {
       decompressed += decompressed.empty() ? bc.first : std::string(",") + bc.first;
     }
   }
+  std::string switches;
+  for (const auto& [on, name] : {
+           std::pair{cvars::dao_disable_geometry_shader, "geometry shader"},
+           std::pair{cvars::dao_disable_conditional_rendering,
+                     "conditional rendering"},
+           std::pair{cvars::dao_disable_stencil_export, "stencil export"},
+           std::pair{cvars::dao_disable_bc_textures, "BC textures"}}) {
+    if (on) {
+      switches += switches.empty() ? name : std::string(", ") + name;
+    }
+  }
   return fmt::format(
       "{} (Vulkan {}.{}, driver id {}): render targets {}; BC textures {}; "
       "points/rectangles {}; memexport vertex {}, pixel {}; shared memory {}; "
-      "resolution scale {}x{}",
+      "resolution scale {}x{}; VIZ predicates {}; stencil export {}; "
+      "testing switches off: {}",
       p.deviceName, VK_API_VERSION_MAJOR(p.apiVersion),
       VK_API_VERSION_MINOR(p.apiVersion), int(p.driverID),
       render_target_cache_->GetPath() ==
@@ -55,7 +76,12 @@ std::string VulkanCommandProcessor::DaoDescribeHostPaths() const {
       p.fragmentStoresAndAtomics ? "yes" : "skipped",
       p.sparseResidencyBuffer ? "sparse" : "allocated in full",
       texture_cache_->draw_resolution_scale_x(),
-      texture_cache_->draw_resolution_scale_y());
+      texture_cache_->draw_resolution_scale_y(),
+      p.conditionalRendering ? "on the GPU" : "CPU waits",
+      vulkan_device->extensions().ext_EXT_shader_stencil_export
+          ? "yes"
+          : "no (per-bit)",
+      switches.empty() ? std::string("none") : switches);
 }
 
 // The device itself, for a bug report from a phone nobody here has (dao.log): who

@@ -30,6 +30,7 @@
 #include "xenia/ui/vulkan/vulkan_util.h"
 
 DECLARE_bool(tiled_shared_memory);
+DECLARE_bool(dao_disable_bc_textures);
 
 namespace xe {
 namespace gpu {
@@ -1245,6 +1246,8 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
          shared_memory().IsRangeWrittenByGpu(
              mips_address, vulkan_texture.GetGuestMipsSize()))) {
       ++stats.texture_loads_gpu_written;
+      ++stats.texture_loads_gpu_written_by_format[uint32_t(texture_key.format) &
+                                                  63];
     }
   }
 
@@ -2322,6 +2325,10 @@ bool VulkanTextureCache::Initialize() {
               VK_FORMAT_BC1_RGBA_UNORM_BLOCK);
   ifn.vkGetPhysicalDeviceFormatProperties(
       physical_device, VK_FORMAT_BC1_RGBA_UNORM_BLOCK, &format_properties);
+  // DAO: the testing switch (ui/vulkan/vulkan_device.cc) takes the fallback.
+  if (cvars::dao_disable_bc_textures) {
+    format_properties.optimalTilingFeatures = 0;
+  }
   if ((format_properties.optimalTilingFeatures & kLinearFilterFeatures) !=
       kLinearFilterFeatures) {
     host_format_dxt1.format_unsigned.load_shader = kLoadShaderIndexDXT1ToRGBA8;
@@ -2336,6 +2343,9 @@ bool VulkanTextureCache::Initialize() {
               VK_FORMAT_BC2_UNORM_BLOCK);
   ifn.vkGetPhysicalDeviceFormatProperties(
       physical_device, VK_FORMAT_BC2_UNORM_BLOCK, &format_properties);
+  if (cvars::dao_disable_bc_textures) {
+    format_properties.optimalTilingFeatures = 0;
+  }
   if ((format_properties.optimalTilingFeatures & kLinearFilterFeatures) !=
       kLinearFilterFeatures) {
     host_format_dxt2_3.format_unsigned.load_shader =
@@ -2351,6 +2361,9 @@ bool VulkanTextureCache::Initialize() {
               VK_FORMAT_BC3_UNORM_BLOCK);
   ifn.vkGetPhysicalDeviceFormatProperties(
       physical_device, VK_FORMAT_BC3_UNORM_BLOCK, &format_properties);
+  if (cvars::dao_disable_bc_textures) {
+    format_properties.optimalTilingFeatures = 0;
+  }
   if ((format_properties.optimalTilingFeatures & kLinearFilterFeatures) !=
       kLinearFilterFeatures) {
     host_format_dxt4_5.format_unsigned.load_shader =
@@ -2366,6 +2379,9 @@ bool VulkanTextureCache::Initialize() {
               VK_FORMAT_BC5_UNORM_BLOCK);
   ifn.vkGetPhysicalDeviceFormatProperties(
       physical_device, VK_FORMAT_BC5_UNORM_BLOCK, &format_properties);
+  if (cvars::dao_disable_bc_textures) {
+    format_properties.optimalTilingFeatures = 0;
+  }
   if ((format_properties.optimalTilingFeatures & kLinearFilterFeatures) !=
       kLinearFilterFeatures) {
     host_format_dxn.format_unsigned.load_shader = kLoadShaderIndexDXNToRG8;
@@ -2378,6 +2394,9 @@ bool VulkanTextureCache::Initialize() {
               VK_FORMAT_BC4_UNORM_BLOCK);
   ifn.vkGetPhysicalDeviceFormatProperties(
       physical_device, VK_FORMAT_BC4_UNORM_BLOCK, &format_properties);
+  if (cvars::dao_disable_bc_textures) {
+    format_properties.optimalTilingFeatures = 0;
+  }
   if ((format_properties.optimalTilingFeatures & kLinearFilterFeatures) !=
       kLinearFilterFeatures) {
     host_format_dxt5a.format_unsigned.load_shader = kLoadShaderIndexDXT5AToR8;

@@ -369,7 +369,9 @@ class VulkanPipelineCache {
       bool viz_survey, PipelineDescription& description_out) const;
 
   // Whether the pipeline for the given description is supported by the device.
-  bool ArePipelineRequirementsMet(const PipelineDescription& description) const;
+  // DAO: unmet_out, if given, receives the dao_draw_fail::RequirementUnmet.
+  bool ArePipelineRequirementsMet(const PipelineDescription& description,
+                                  uint32_t* unmet_out = nullptr) const;
 
   static bool GetGeometryShaderKey(
       PipelineGeometryShader geometry_shader_type,

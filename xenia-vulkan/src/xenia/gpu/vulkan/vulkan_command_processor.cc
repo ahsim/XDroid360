@@ -23,6 +23,7 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/vulkan/dao_draw_fail.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
@@ -2412,6 +2413,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
   const RegisterFile& regs = *register_file_;
 
+  // DAO: the draw the failure reports name (dao_draw_fail.h).
+  using dao_draw_fail::Reason;
+  dao_draw_fail::CurrentDraw() = {uint32_t(prim_type), UINT32_MAX};
+
   // VIZ survey geometry associated with a specific 0:63 ID.
   // draw_util keeps it normalized, so it only counts coverage here.
   const bool viz_survey = draw_util::IsVIZSurveyDraw(regs);
@@ -2442,6 +2447,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   auto vertex_shader = static_cast<VulkanShader*>(active_vertex_shader());
   if (!vertex_shader) {
     // Always need a vertex shader.
+    dao_draw_fail::Report(Reason::kNoVertexShader);
     return false;
   }
   pipeline_cache_->AnalyzeShaderUcode(*vertex_shader);
@@ -2522,13 +2528,17 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // CompletedSubmissionUpdated.
   for (uint32_t i = 0; i < 2; ++i) {
     if (!BeginSubmission(true)) {
+      dao_draw_fail::Report(Reason::kBeginSubmission);
       return false;
     }
 
     // Process primitives.
     if (!primitive_processor_->Process(primitive_processing_result)) {
+      dao_draw_fail::Report(Reason::kPrimitiveProcessing);
       return false;
     }
+    dao_draw_fail::CurrentDraw().host_vertex_shader_type =
+        uint32_t(primitive_processing_result.host_vertex_shader_type);
     if (!primitive_processing_result.host_draw_vertex_count) {
       // Nothing to draw.
       return true;
@@ -2544,6 +2554,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             Shader::HostVertexShaderType::kPointListAsTriangleStrip &&
         !Shader::IsHostVertexShaderTypeDomain(
             primitive_processing_result.host_vertex_shader_type)) {
+      dao_draw_fail::Report(
+          Reason::kHostVertexShaderType,
+          uint32_t(primitive_processing_result.host_vertex_shader_type));
       return false;
     }
 
@@ -2602,6 +2615,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                      : nullptr;
     if (!pipeline_cache_->EnsureShadersTranslated(vertex_shader_translation,
                                                   pixel_shader_translation)) {
+      dao_draw_fail::Report(Reason::kShaderTranslation);
       return false;
     }
 
@@ -2653,6 +2667,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             // anymore (would enter an infinite loop otherwise if the number of
             // attempts was not limited to 2). Possibly too many unique samplers
             // in one draw, or failed to await submission completion.
+            dao_draw_fail::Report(Reason::kSampler, i);
             return false;
           }
           ++samplers_overflowed_count;
@@ -2714,6 +2729,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   if (!render_target_cache_->Update(
           is_rasterization_done, normalized_depth_control,
           normalized_color_mask, *vertex_shader, window_offset_tiles)) {
+    dao_draw_fail::Report(Reason::kRenderTargets);
     return false;
   }
 
@@ -2739,6 +2755,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     current_pipeline = pipeline->pipeline.load(std::memory_order_acquire);
     if (current_pipeline == VK_NULL_HANDLE) {
       // Still not ready - something is wrong.
+      dao_draw_fail::Report(Reason::kPipelineNotCreated);
       return false;
     }
   }
@@ -2912,6 +2929,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // Update uniform buffers and descriptor sets after binding the pipeline with
   // the new layout.
   if (!UpdateBindings(vertex_shader, pixel_shader)) {
+    dao_draw_fail::Report(Reason::kBindings);
     return false;
   }
 
@@ -3056,6 +3074,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         apply_host_depth_polygon_offset ? &host_depth_polygon_offset : nullptr,
         window_offset_tiles);
     if (!UpdateBindings(vertex_shader, pixel_shader)) {
+      dao_draw_fail::Report(Reason::kBindings, 1);
       return false;
     }
   }
@@ -3092,6 +3111,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         break;
       default:
         assert_unhandled_case(primitive_processing_result.index_buffer_type);
+        dao_draw_fail::Report(
+            Reason::kIndexBuffer,
+            uint32_t(primitive_processing_result.index_buffer_type));
         return false;
     }
     deferred_command_buffer_.CmdVkBindIndexBuffer(
