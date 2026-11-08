@@ -334,6 +334,7 @@ public class GameActivity extends SDLActivity {
             if (key.length == 2 && current.frameRateToUse() > 0) {
                 XeniaConfig.set(config, key[0], key[1], String.valueOf(current.frameRateToUse()));
             }
+            applyWeakGpuDefaults(config);
         } catch (java.io.IOException e) {
             Log.w(TAG, "config.toml: " + e);
         }
@@ -347,6 +348,26 @@ public class GameActivity extends SDLActivity {
                 + ", language " + current.languageToUse()
                 + (current.option("frame_rate") != null ? ", frame rate " + current.frameRateToUse() : "")
                 + (current.option("preset") != null ? ", preset " + (current.preset.isEmpty() ? "game's own" : current.preset) : ""));
+    }
+
+    /**
+     * On a GPU short of an Adreno 8xx (Mali, an older Adreno), a game's first start runs at 30 fps
+     * with its heavier effects off: half the GPU's work, so less heat, which on a phone soon costs
+     * more speed than anything else. Only before the game first writes its own frame rate into
+     * config.toml, so a game already played, and what the player then picks in the game's own
+     * Graphics tab, stay as they are. Dragon Age: Origins' keys; its shadows and post-processing
+     * are already off on Android.
+     */
+    private void applyWeakGpuDefaults(File config) throws java.io.IOException {
+        if (!Instance.DAO_TITLE_ID.equals(current.titleId())) return;
+        String gpu = gpuModel();
+        if (gpu.startsWith("Adreno8")) return;
+        String text = config.isFile()
+                ? new String(java.nio.file.Files.readAllBytes(config.toPath()), java.nio.charset.StandardCharsets.UTF_8) : "";
+        if (java.util.regex.Pattern.compile("(?m)^\\s*frame_rate\\s*=").matcher(text).find()) return;
+        XeniaConfig.set(config, "video", "frame_rate", "30");
+        XeniaConfig.set(config, "video", "depth_of_field", "false");
+        Log.i(TAG, "GPU '" + gpu + "' isn't an Adreno 8xx: first start at 30 fps, depth of field off");
     }
 
     /**
