@@ -5581,6 +5581,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
                ++k) {
             if (transfer_is_stencil_bit) {
               uint32_t transfer_stencil_bit = uint32_t(1) << k;
+              DAO_STATS_ADD(stencil_bit_draws, 1);  // DAO: DAO_GPU_STATS.
               command_buffer.CmdVkPushConstants(
                   transfer_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                   sizeof(uint32_t) *

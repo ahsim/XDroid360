@@ -101,6 +101,8 @@ struct Counters {
   uint64_t texture_loads_again_gpu = 0;
   uint64_t texture_loads_bc_decompressed = 0;
   uint64_t texture_load_bc_decompressed_bytes = 0;
+  // Draws writing one stencil bit in transfers (no shader stencil export).
+  uint64_t stencil_bit_draws = 0;
 };
 
 inline bool Enabled() {
@@ -295,7 +297,8 @@ inline void OnSwap(uint32_t draws_issued) {
       "resolve {:.1f} / transfer {:.1f} / other {:.1f}, query {:.1f}, VIZ "
       "{:.1f}, submission {:.1f}, other {:.1f}; texture loads per frame: "
       "first {:.1f}, again after CPU write {:.1f}, after GPU write {:.1f}, "
-      "BC decompressed {:.1f} ({:.2f} MB); new pipelines {} ({:.0f} ms CPU){}",
+      "BC decompressed {:.1f} ({:.2f} MB); stencil bit draws {:.1f}; new "
+      "pipelines {} ({:.0f} ms CPU){}",
       interval_p50, interval_p95, cpu_p50, cpu_p95, wait_p50, wait_p95,
       e[kPassEndRenderTargets] / f, e[kPassEndBarrierTextureLoad] / f,
       e[kPassEndBarrierResolve] / f, e[kPassEndBarrierTransfer] / f,
@@ -304,7 +307,8 @@ inline void OnSwap(uint32_t draws_issued) {
       e[kPassEndOther] / f, c.texture_loads_first / f,
       c.texture_loads_again_cpu / f, c.texture_loads_again_gpu / f,
       c.texture_loads_bc_decompressed / f,
-      c.texture_load_bc_decompressed_bytes / f / 1048576.0, pipelines,
+      c.texture_load_bc_decompressed_bytes / f / 1048576.0,
+      c.stencil_bit_draws / f, pipelines,
       pipeline_us / 1000.0, dao_timing::TakeSummary());
   if (ReportSink()) {
     ReportSink()(line.c_str());
