@@ -88,6 +88,26 @@ final class RecipeRunner {
         JSONArray steps = recipe.json.optJSONArray("steps");
         for (int i = 0; i < steps.length(); i++) weightTotal += Math.max(0, steps.optJSONObject(i).optDouble("weight", 1));
         if (weightTotal <= 0) weightTotal = 1;
+        // An update over a kept build (keepForUpdate): its steps stand only while the profile's
+        // files they read are the same.
+        File print = new File(work, "update.fingerprint");
+        if (print.isFile()) {
+            try {
+                String was = new String(Files.readAllBytes(print.toPath()), StandardCharsets.UTF_8);
+                if (!was.equals(fingerprint())) {
+                    android.util.Log.i("XDroid360", "update: the profile's game-code inputs changed, building all again");
+                    Instance.deleteTree(work);
+                }
+            } catch (IOException e) {
+                Instance.deleteTree(work);
+            }
+        }
+        // The steps that take the profile's own files always run again: the runtime they link
+        // comes with the launcher, so a marker of theirs may be from another one.
+        for (int i = firstProfileStep(); i < steps.length(); i++) {
+            JSONObject step = steps.optJSONObject(i);
+            if (!step.optBoolean("keeps_game")) Instance.deleteTree(marker(step));
+        }
         //noinspection ResultOfMethodCallIgnored
         new File(work, "tmp").mkdirs();
         //noinspection ResultOfMethodCallIgnored
@@ -280,7 +300,15 @@ final class RecipeRunner {
         if (in != null) for (String plus : strings(in.optJSONArray("plus"))) files.add(new File(vars.text(plus)));
         File dir = objectsDir(step);
         List<String> out = new ArrayList<>();
-        for (File f : files) out.add(new File(dir, objectName(f)).getPath());
+        File[] kept = marker(step).isFile() ? dir.listFiles((d, n) -> n.endsWith(".o")) : null;
+        if (kept != null && kept.length > 0) {
+            // A step kept from an earlier build (keepForUpdate): its sources are gone, its objects
+            // are what the link takes.
+            java.util.Arrays.sort(kept);
+            for (File o : kept) out.add(o.getPath());
+        } else {
+            for (File f : files) out.add(new File(dir, objectName(f)).getPath());
+        }
         inputs.put(step.optString("id"), files);
         objects.put(step.optString("id"), out);
     }
@@ -442,9 +470,101 @@ final class RecipeRunner {
         }
         List<File> keep = new ArrayList<>();
         for (String k : strings(result.optJSONArray("keep"))) keep.add(new File(vars.text(k)));
+        keepForUpdate(keep);
         File[] children = work.listFiles();
         if (children != null) {
             for (File c : children) if (!keep.contains(c)) Instance.deleteTree(c);
+        }
+    }
+
+    /**
+     * What an update of the game (InstanceActions.update) can reuse: the steps before the first
+     * one that takes the profile's own files (include/, lib/: the runtime, which a new launcher
+     * changes) only depend on the game and the recipe, so their markers and compiled objects
+     * stay. The translated sources go (the objects are what the link takes), the headers stay
+     * for build-info. A fingerprint of what those steps read from the profile (xr/, include/,
+     * the recipe's vars) voids them when that changes (run()).
+     */
+    /** The index of the first step that takes the profile's own files (include/, lib/). */
+    private int firstProfileStep() {
+        JSONArray steps = recipe.json.optJSONArray("steps");
+        for (int i = 0; i < steps.length(); i++) {
+            // (org.json writes "/" as "\/".)
+            String text = steps.optJSONObject(i).toString().replace("\\/", "/");
+            if (text.contains("${PROFILE}/include") || text.contains("${PROFILE}/lib")) return i;
+        }
+        return steps.length();
+    }
+
+    private void keepForUpdate(List<File> keep) {
+        JSONArray steps = recipe.json.optJSONArray("steps");
+        java.util.Set<String> kept = new java.util.HashSet<>();
+        int first = firstProfileStep();
+        for (int i = 0; i < first; i++) {
+            JSONObject step = steps.optJSONObject(i);
+            if (step.optBoolean("keeps_game")) continue;
+            kept.add(step.optString("id"));
+            if ("each".equals(step.optString("kind"))) {
+                try {
+                    keep.add(objectsDir(step).getParentFile());
+                } catch (Recipe.Failure e) {
+                    return;
+                }
+            }
+        }
+        if (kept.isEmpty()) return;
+        File done = new File(work, "done");
+        File[] markers = done.listFiles();
+        if (markers != null) for (File m : markers) if (!kept.contains(m.getName())) Instance.deleteTree(m);
+        keep.add(done);
+        // Objects of later steps (build-info) aren't kept: their markers are gone.
+        File obj = new File(work, "obj");
+        File[] objDirs = obj.listFiles();
+        if (objDirs != null) for (File d : objDirs) if (!kept.contains(d.getName())) Instance.deleteTree(d);
+        File ppc = new File(work, "ppc");
+        File[] sources = ppc.listFiles((d, n) -> n.endsWith(".cpp"));
+        if (sources != null) for (File s : sources) Instance.deleteTree(s);
+        if (ppc.isDirectory()) keep.add(ppc);
+        try {
+            touch(new File(work, "update.fingerprint"));
+            Files.write(new File(work, "update.fingerprint").toPath(), fingerprint().getBytes(StandardCharsets.UTF_8));
+            keep.add(new File(work, "update.fingerprint"));
+        } catch (IOException e) {
+            android.util.Log.w("XDroid360", "update fingerprint: " + e);
+        }
+    }
+
+    /** What the kept steps read from the profile: its xr/ and include/ files and the recipe's vars. */
+    private String fingerprint() throws IOException {
+        java.security.MessageDigest md;
+        try {
+            md = java.security.MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+        File profile = Toolchain.profileDir(context, recipe.profileId);
+        for (String sub : new String[] { "xr", "include" }) {
+            List<File> files = new ArrayList<>();
+            listFiles(new File(profile, sub), files);
+            files.sort(null);
+            for (File f : files) {
+                md.update(f.getPath().substring(profile.getPath().length()).getBytes(StandardCharsets.UTF_8));
+                md.update(Files.readAllBytes(f.toPath()));
+            }
+        }
+        JSONObject v = recipe.json.optJSONObject("vars");
+        md.update(String.valueOf(v).getBytes(StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder();
+        for (byte b : md.digest()) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    private static void listFiles(File dir, List<File> out) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File c : children) {
+            if (c.isDirectory()) listFiles(c, out);
+            else out.add(c);
         }
     }
 

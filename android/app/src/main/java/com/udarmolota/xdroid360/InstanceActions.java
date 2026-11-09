@@ -253,6 +253,41 @@ final class InstanceActions {
         }
     }
 
+    /**
+     * Builds an existing game again for this launcher's profile: its build job runs once more
+     * over the kept game files (the extract step's marker) and, while the profile's game-code
+     * inputs are the same, the kept compiled code (RecipeRunner.keepForUpdate). The instance's
+     * settings, user data and saves stay (BuildService.finish).
+     */
+    static void update(Activity a, Instance instance) {
+        BuildJob job = instance.isDev() ? null : BuildJob.load(a, instance.id);
+        if (job == null) {
+            Toast.makeText(a, R.string.instance_update_unavailable, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (BuildService.busy()) {
+            Toast.makeText(a, R.string.build_busy, Toast.LENGTH_LONG).show();
+            return;
+        }
+        new MaterialAlertDialogBuilder(a)
+                .setTitle(R.string.instance_update)
+                .setMessage(a.getString(R.string.instance_update_text, instance.name))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.instance_update_go, (d, w) -> {
+                    job.state = BuildJob.RUNNING;
+                    job.errorCode = job.errorDetail = job.failedStep = "";
+                    try {
+                        job.save(a);
+                    } catch (IOException e) {
+                        Toast.makeText(a, e.toString(), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    BuildService.start(a, job.id);
+                    a.startActivity(new Intent(a, BuildActivity.class).putExtra(BuildActivity.EXTRA_JOB, job.id));
+                })
+                .show();
+    }
+
     static void confirmDelete(Activity a, Instance instance, Runnable after) {
         new MaterialAlertDialogBuilder(a)
                 .setMessage(a.getString(R.string.instance_delete_confirm, instance.name))

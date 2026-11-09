@@ -2,6 +2,9 @@
 <!-- A card's menu: what the side menu and the settings screen don't have. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
+        android:id="@+id/instance_update"
+        android:title="@string/instance_update" />
+    <item
         android:id="@+id/instance_delete"
         android:title="@string/instance_delete" />
 </menu>

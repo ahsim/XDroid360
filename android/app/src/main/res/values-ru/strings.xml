@@ -6,6 +6,10 @@
     <string name="instance_play">Играть</string>
     <string name="instance_settings">Настройки</string>
     <string name="instance_export_log">Отправить последний лог</string>
+    <string name="instance_update">Обновить игру</string>
+    <string name="instance_update_text">Пересобрать «%1$s» под эту версию лаунчера. Файлы игры, сейвы и настройки останутся; обычно около минуты.</string>
+    <string name="instance_update_go">Обновить</string>
+    <string name="instance_update_unavailable">Эта игра собрана не на этом телефоне: добавьте её заново.</string>
     <string name="instance_delete">Удалить</string>
     <string name="instance_delete_confirm">Удалить «%1$s»? Отменить будет нельзя.</string>
     <string name="instance_no_log">Лога пока нет: сначала запустите игру.</string>

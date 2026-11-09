@@ -183,7 +183,8 @@ public class LauncherActivity extends AppCompatActivity {
             menu.inflate(R.menu.menu_instance);
             menu.setOnMenuItemClickListener(item -> {
                 int id = item.getItemId();
-                if (id == R.id.instance_delete) InstanceActions.confirmDelete(this, i, this::refresh);
+                if (id == R.id.instance_update) InstanceActions.update(this, i);
+                else if (id == R.id.instance_delete) InstanceActions.confirmDelete(this, i, this::refresh);
                 return true;
             });
             menu.show();

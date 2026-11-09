@@ -155,6 +155,19 @@ public class BuildService extends Service {
 
     /** The new instance: its instance.json, a unique name, a warm shader cache. */
     private void finish(BuildJob job, Recipe recipe) throws IOException {
+        // An update of an existing game (InstanceActions.update): its settings, name, user data
+        // and shader cache stay; only the recipe it was built from changes.
+        for (Instance existing : Instance.list(this)) {
+            if (existing.id.equals(job.id)) {
+                try {
+                    existing.manifest.put("recipe", recipe.stamp());
+                } catch (org.json.JSONException e) {
+                    throw new IOException(e);
+                }
+                existing.save();
+                return;
+            }
+        }
         Instance instance = Instance.built(this, job.id, job.titleId, recipe.title(), recipe.stamp());
         //noinspection ResultOfMethodCallIgnored
         instance.userdata().mkdirs();
