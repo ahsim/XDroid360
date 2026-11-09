@@ -1,3 +1,6 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// shaders/XenosRecomp/shader_common.h (MIT; see ../LICENSE.md): tfetch2DDenorm, for texture fetches with
+// unnormalized coordinates.
 #ifndef SHADER_COMMON_H_INCLUDED
 #define SHADER_COMMON_H_INCLUDED
 
@@ -158,6 +161,16 @@ float4 tfetch2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float
     else
         desplazamiento = offset / getTexture2DDimensions(texture);
     return texture.Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], texCoord + desplazamiento);
+}
+
+// XDroid360: a fetch with unnormalized coordinates (the instruction's tx_coord_denorm, as Xenia's
+// SpirvShaderTranslator handles it): the coordinates are in texels, not 0-1. Dragon Age: Origins'
+// xenonreload restores its tiled scene with them (pixel position as the coordinate); read as 0-1,
+// every pixel clamped to the corner texel and the whole frame came out one flat colour.
+float4 tfetch2DDenorm(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset, float2 invSize)
+{
+    const float2 size = float2(getTexture2DDimensions(g_Texture2DDescriptorHeap[resourceDescriptorIndex]));
+    return tfetch2D(resourceDescriptorIndex, samplerDescriptorIndex, texCoord / size, offset, invSize);
 }
 
 float2 getWeights2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset)

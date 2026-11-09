@@ -1,3 +1,5 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_captura.h (GPL-3.0; see ../NOTICE.md): the ReXGlue classes it forward-declared are Xenia's here, so their compat headers.
 // nfsmw - captures of the game image for the native renderer tests. With
 // nfsmw_captura_cada_s > 0 it saves a PNG every N seconds in capturas/ next
 // to the executable, in native and in emulation mode, to compare the two
@@ -9,9 +11,7 @@
 #include <filesystem>
 #include <functional>
 
-namespace rex::ui {
-class Presenter;
-}
+#include <rex/ui/presenter.h>
 
 namespace nfsmw::captura {
 

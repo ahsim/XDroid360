@@ -1,3 +1,6 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// shaders/XenosRecomp/shader_recompiler.cpp (MIT, hedge-dev and contributors; see ../LICENSE.md):
+// boolean constants the constant table leaves out (booleanMask).
 #include "shader_recompiler.h"
 #include "shader_common.h"
 #include <stdexcept>
@@ -172,6 +175,21 @@ static constexpr std::string_view TEXTURE_DIMENSIONS[] =
 static FetchDestinationSwizzle getDestSwizzle(uint32_t dstSwizzle, uint32_t index)
 {
     return FetchDestinationSwizzle((dstSwizzle >> (index * 3)) & 0x7);
+}
+
+// XDroid360: the g_Booleans mask of the boolean constant the control flow tests. Named by the
+// constant table, its #define; otherwise (DAO's shaders test booleans their tables leave out) the
+// bit itself: vertex shader booleans are bits 0-15, pixel shader ones (control flow addresses
+// 128-143) bits 16-31, as the named ones are packed.
+std::string ShaderRecompiler::booleanMask(uint32_t boolAddress) const
+{
+    const auto named = boolConstants.find(boolAddress);
+    if (named != boolConstants.end())
+        return named->second;
+    const uint32_t index = boolAddress >= 128 ? boolAddress - 128 : boolAddress;
+    if (index >= 16)
+        throw std::runtime_error(fmt::format("boolean constant b{} is outside the 16 per stage", boolAddress));
+    return fmt::format("(1u << {})", index + (isPixelShader ? 16 : 0));
 }
 
 void ShaderRecompiler::printDstSwizzle(uint32_t dstSwizzle, bool operand)
@@ -394,6 +412,10 @@ void ShaderRecompiler::recompile(const TextureFetchInstruction& instr, bool bicu
     if (bicubic)
         out += "Bicubic";
 #endif
+    // XDroid360: unnormalized coordinates (shader_common.h, tfetch2DDenorm). Only 2D fetches so far.
+    if (instr.opcode == FetchOpcode::TextureFetch && instr.dimension == TextureDimension::Texture2D &&
+        instr.texCoordDenorm)
+        out += "Denorm";
 
     print("({0}_Texture{1}DescriptorIndex, {0}_SamplerDescriptorIndex, ", constNamePtr, dimension);
     printSrcRegister(componentCount);
@@ -1370,6 +1392,11 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
             boolConstants.emplace(constantInfo->registerIndex + (isPixelShader ? 128 : 0), constantName);
 #else
             boolConstants.emplace(constantInfo->registerIndex, constantName);
+            // XDroid360: the control flow addresses pixel shader booleans from 128 (the Xenos
+            // convention), as in NFSMW; DAO's shaders do too. Both keys: the table's index and the
+            // control flow's address.
+            if (isPixelShader)
+                boolConstants.emplace(constantInfo->registerIndex + 128, constantName);
 #endif
         }
     }
@@ -1759,11 +1786,9 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
                 {
                     // The condition belongs to the whole EXEC block, including its
                     // return. Per-instruction ALU predication does not replace it.
-                    const auto booleano = boolConstants.find(cfInstr.condExec.boolAddress);
-                    if (booleano == boolConstants.end())
-                        throw std::runtime_error("EXEC condicional sin constante booleana declarada");
                     indent();
-                    println("if ((g_Booleans & {}) {}= 0)", booleano->second, cfInstr.condExec.condition ? "!" : "=");
+                    println("if ((g_Booleans & {}) {}= 0)", booleanMask(cfInstr.condExec.boolAddress),
+                        cfInstr.condExec.condition ? "!" : "=");
                     indent();
                     out += "{\n";
                     ++indentation;
@@ -1851,11 +1876,8 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
                     }
                     else
                     {
-                        auto findResult = boolConstants.find(cfInstr.condJmp.boolAddress);
-                        if (findResult != boolConstants.end())
-                            println("if ((g_Booleans & {}) {}= 0)", findResult->second, cfInstr.condJmp.condition ^ simpleControlFlow ? "!" : "=");
-                        else
-                            println("if (b{} {}= 0)", uint32_t(cfInstr.condJmp.boolAddress), cfInstr.condJmp.condition ^ simpleControlFlow ? "!" : "=");
+                        println("if ((g_Booleans & {}) {}= 0)", booleanMask(cfInstr.condJmp.boolAddress),
+                            cfInstr.condJmp.condition ^ simpleControlFlow ? "!" : "=");
                     }
 
                     if (simpleControlFlow)

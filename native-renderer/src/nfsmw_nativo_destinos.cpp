@@ -1,3 +1,8 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_destinos.cpp (GPL-3.0; see ../NOTICE.md): a tiled resolve goes into the texture it
+// belongs to (UnirTesela); Dragon Age's EDRAM reload done as copies (RecargaEdram); D3D's depth clears and
+// the color targets they alias (BorradoProfundidadD3d); test dumps around chosen draws
+// (xdroid360_volcado_ps).
 // nfsmw - native renderer, part C2 (see nfsmw_nativo_destinos.h).
 //
 // WHAT IT COVERS
@@ -104,6 +109,24 @@ REXCVAR_DEFINE_BOOL(nfsmw_volcado, false, "NFSMW",
                     "siguiente fotograma se guarda paso a paso en volcado/NNN: cada destino de color tal como "
                     "lo dejan sus dibujos al resolverlo y la imagen presentada, en PNG, con indice.txt. El "
                     "fichero se borra al empezar. Lento, solo para pruebas");
+REXCVAR_DEFINE_BOOL(xdroid360_borrado_d3d, true, "NFSMW",
+                    "XDroid360: Direct3D's own depth clears (a rectangle in depth-only EDRAM mode, Z test "
+                    "ALWAYS with writes, drawn with D3D's internal shaders the library does not have) done as "
+                    "clears to RB_DEPTH_CLEAR of every depth target at that EDRAM base, whatever its pitch: "
+                    "D3D clears the 1280x720 depth as 640 wide with 4x MSAA, the same EDRAM. false = dropped "
+                    "as before");
+REXCVAR_DEFINE_BOOL(xdroid360_recarga_edram, true, "NFSMW",
+                    "XDroid360: the EDRAM reload idiom (Dragon Age: Origins' xenonreload after predicated "
+                    "tiling) done as image copies: a rectangle-list draw whose second color target sits at "
+                    "the depth buffer's EDRAM base and whose pixel shader samples a resolved color texture "
+                    "and a resolved depth texture copies them into the color and depth targets instead of "
+                    "drawing. Without EDRAM the color target cannot alias the depth buffer, so the draw "
+                    "itself cannot restore the depth. false = draw it as the game asks");
+REXCVAR_DEFINE_STRING(xdroid360_volcado_ps, "", "NFSMW",
+                      "XDroid360 (tests only), with nfsmw_volcado: in the dumped frame, around every draw "
+                      "with one of these pixel shaders (library numbers, comma-separated): the resolved "
+                      "textures it samples before the draw, and its color targets after it, plus whether "
+                      "the draw was recorded at all");
 REXCVAR_DEFINE_BOOL(nfsmw_volcado_sin_esperar, true, "NFSMW",
                     "nfsmw_volcado: true = cada paso solo graba su copia a un bufer y se espera a la GPU una vez al "
                     "final del fotograma (no cambia el ritmo de la GPU entre pases); false = esperar en cada paso");
@@ -1481,7 +1504,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
         // 4 bytes per texel: base in multiples of 32 texels (GetResolveInfo).
         const uint32_t base_x = uint32_t(x0) & ~uint32_t(31);
         const uint32_t base_y = uint32_t(y0) & ~uint32_t(31);
-        const uint32_t base =
+        uint32_t base =
             reg.rb_copy_dest_base +
             uint32_t(DesplazamientoMosaico2D(int32_t(base_x), int32_t(base_y), pitch_destino, 2));
         dx = uint32_t(x0) - base_x;
@@ -1497,7 +1520,9 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
             x0 == 0 && ancho_copia < pitch_destino && ((ancho_copia + 31) & ~uint32_t(31)) == pitch_destino
                 ? ancho_copia
                 : pitch_destino;
-        resuelta = ObtenerResuelta(base & 0x1FFFFFFF, ancho_imagen, alto_destino, formato_destino,
+        uint32_t ancho_resuelta = ancho_imagen, alto_resuelta = alto_destino;
+        UnirTesela(base, pitch_destino, kFormatoColor, dy, ancho_resuelta, alto_resuelta);
+        resuelta = ObtenerResuelta(base & 0x1FFFFFFF, ancho_resuelta, alto_resuelta, formato_destino,
                                    (info_destino >> 24) & 0x1);
         base_resuelta = base & 0x1FFFFFFF;
         if (resuelta) {
@@ -1787,11 +1812,11 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     const uint32_t alto_destino = (reg.rb_copy_dest_pitch >> 16) & 0x3FFF;
     const uint32_t base_x = uint32_t(x0) & ~uint32_t(31);
     const uint32_t base_y = uint32_t(y0) & ~uint32_t(31);
-    const uint32_t base =
+    uint32_t base =
         reg.rb_copy_dest_base +
         uint32_t(DesplazamientoMosaico2D(int32_t(base_x), int32_t(base_y), pitch_destino, 2));
     const uint32_t dx = uint32_t(x0) - base_x;
-    const uint32_t dy = uint32_t(y0) - base_y;
+    uint32_t dy = uint32_t(y0) - base_y;
     const uint32_t formato_textura = ((info >> 16) & 0x1) ? 23 : 22;  // k_24_8_FLOAT : k_24_8
     // With the scaled shadow map, the resolved texture stays at that same size.
     // The scene picks it by address, without looking at the size, and samples it with normalized coordinates
@@ -1802,6 +1827,8 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     if (profundidad->ancho_guest && profundidad->ancho_guest != profundidad->ancho) {
       ancho_resuelta = uint32_t(uint64_t(pitch_destino) * profundidad->ancho / profundidad->ancho_guest);
       alto_resuelta = uint32_t(uint64_t(alto_destino) * profundidad->alto / profundidad->alto_guest);
+    } else {
+      UnirTesela(base, pitch_destino, formato_profundidad_, dy, ancho_resuelta, alto_resuelta);
     }
     // If the previous copy to this address is still deferred, it is recorded first (exact; it does not happen
     // in a race: the scene clear resolves it earlier). See nfsmw_nativo_profundidad_perezosa.
@@ -2894,7 +2921,298 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     } else if (!diag_vigiladas_.empty()) {
       DiagVigilar(peticion);
     }
-    return dibujos_ && dibujos_->Dibujar(peticion);
+    const bool volcar = volcado_activo_ && VolcarConPs(peticion);
+    if (volcar) {
+      VolcarTexturasDe(peticion);
+    }
+    if (RecargaEdram(peticion)) {
+      if (volcar) {
+        VolcarDestinosDe(peticion, true);
+      }
+      return true;
+    }
+    const bool hecho = dibujos_ && dibujos_->Dibujar(peticion);
+    if (volcar) {
+      VolcarDestinosDe(peticion, hecho);
+    }
+    return hecho;
+  }
+
+  /*
+   * XDroid360 (xdroid360_borrado_d3d). Dragon Age: Origins clears depth and stencil with D3D's Clear: a
+   * rectangle with D3D's internal shaders (not in the library, so the ring drops the draw) in depth-only
+   * EDRAM mode, Z test ALWAYS, Z writes on, the value in RB_DEPTH_CLEAR as well. Dropping it left the
+   * reloaded depth of the previous frame in place, and the first tile of the next frame failed its depth
+   * test against it. D3D clears the 1280x720 surface as 640 wide with 4x MSAA (fewer pixels, same EDRAM):
+   * without EDRAM those are separate images here, so every depth image at that base is cleared.
+   */
+  bool BorradoProfundidadD3d(const uint32_t* r) override {
+    constexpr uint32_t kSurfaceInfo = 0x2000, kDepthInfo = 0x2002, kDepthControl = 0x2200, kModeControl = 0x2208;
+    constexpr uint32_t kDepthClear = 0x231D, kDrawInitiator = 0x21FC;
+    if (!r || !REXCVAR_GET(xdroid360_borrado_d3d) || (r[kDrawInitiator] & 0x3F) != 8 ||
+        (r[kModeControl] & 0x7) != 5) {
+      return false;
+    }
+    const uint32_t control = r[kDepthControl];
+    const bool z_siempre = ((control >> 1) & 0x1) && ((control >> 2) & 0x1) && ((control >> 4) & 0x7) == 7;
+    if (!z_siempre) {
+      return false;
+    }
+    const uint32_t info = r[kDepthInfo];
+    const uint32_t base = info & 0xFFF;
+    RegistrosCopia reg;
+    reg.rb_depth_info = info;
+    reg.rb_depth_clear = r[kDepthClear];
+    // The pitches of the depth images at this base (the clear's own included, created if new).
+    std::vector<uint32_t> pitches{r[kSurfaceInfo] & 0x3FFF};
+    for (const auto& [clave, imagen] : profundidades_) {
+      if (uint32_t(clave >> 20) == base && ((clave >> 16) & 0xF) == ((info >> 16) & 0x1)) {
+        const uint32_t pitch = uint32_t(clave & 0xFFFF);
+        if (std::find(pitches.begin(), pitches.end(), pitch) == pitches.end()) {
+          pitches.push_back(pitch);
+        }
+      }
+    }
+    if (dibujos_) {
+      dibujos_->TerminarPase();  // a clear cannot go inside a pass
+    }
+    for (const uint32_t pitch : pitches) {
+      BorrarProfundidad(reg, pitch);
+    }
+    /*
+     * The same clear also covers the color targets at that EDRAM base: D3D clears a color buffer by
+     * binding it as depth and writing the clear pattern in depth-only mode (Dragon Age clears the
+     * 160x160 board of its portraits and minimap this way, and the minimap showed the last portrait).
+     * Without EDRAM those are separate images here, so each 8-bit color target at the base is cleared to
+     * the same 32 bits, a byte per channel as the resolve clears do.
+     */
+    uint32_t colores = 0;
+    if (Grabar()) {
+      for (auto& [clave, imagen] : destinos_) {
+        const uint32_t formato = uint32_t(clave >> 16) & 0xF;
+        if (uint32_t(clave >> 20) != base || (formato != 0 && formato != 1) || imagen.imagen == VK_NULL_HANDLE) {
+          continue;
+        }
+        Preparar(imagen);
+        AntesDeEscribirColor(imagen);
+        RotarFrontalAntesDeBorrar(imagen);
+        imagen.contenido_invalido = false;
+        VkClearColorValue color{};
+        for (uint32_t j = 0; j < 4; ++j) {
+          color.float32[j] = float((reg.rb_depth_clear >> (j * 8)) & 0xFF) * (1.0f / 255.0f);
+        }
+        MarcarGpu(kGpuBorrados);
+        AntesDeTransferir();
+        dfn_.vkCmdClearColorImage(comandos_trabajo_, imagen.imagen, VK_IMAGE_LAYOUT_GENERAL, &color, 1,
+                                  &kRangoColor);
+        OlvidarBorrado(imagen);
+        ++colores;
+      }
+    }
+    if (++borrados_d3d_ <= 4) {
+      REXLOG_INFO("[nativo] C2 borrado de profundidad de D3D: base {:03X}, valor {:08X}, {} imagenes de "
+                  "profundidad y {} de color",
+                  base, reg.rb_depth_clear, pitches.size(), colores);
+    }
+    return true;
+  }
+
+  /*
+   * XDroid360 (xdroid360_recarga_edram). After predicated tiling, Dragon Age: Origins puts its resolved
+   * scene back into EDRAM with a full-screen rectangle (xenonreload): its pixel shader reads the scene
+   * color and the scene depth with pixel coordinates and writes the color to the first target and the
+   * depth bits, as color, to a second target placed at the depth buffer's EDRAM base. Without EDRAM that
+   * second target is an image of its own, so the depth never comes back, and the draw left the color
+   * target black on the Adreno as well. The same result as image copies: the resolved color into the
+   * color target and the resolved depth into the depth target, both from the top-left corner.
+   */
+  bool RecargaEdram(const PeticionDibujo& peticion) {
+    if (!peticion.ps || !peticion.registros || !copiar_imagen_ || !REXCVAR_GET(xdroid360_recarga_edram)) {
+      return false;
+    }
+    const uint32_t* r = peticion.registros;
+    constexpr uint32_t kSurfaceInfo = 0x2000, kColorInfo = 0x2001, kDepthInfo = 0x2002, kColor1Info = 0x2003;
+    constexpr uint32_t kColorMask = 0x2104, kDrawInitiator = 0x21FC, kFetch = 0x4800;
+    const uint32_t mascara = r[kColorMask];
+    if ((r[kDrawInitiator] & 0x3F) != 8 || !(mascara & 0xF) || !((mascara >> 4) & 0xF) ||
+        (r[kColor1Info] & 0xFFF) != (r[kDepthInfo] & 0xFFF)) {
+      return false;
+    }
+    Resuelta* color = nullptr;
+    Resuelta* profundidad = nullptr;
+    uint32_t base_color = 0, base_profundidad = 0;
+    for (const SamplerShader& s : peticion.ps->samplers) {
+      if (s.registro >= 32) {
+        continue;
+      }
+      const uint32_t base = ((r[kFetch + uint32_t(s.registro) * 6 + 1] >> 12) << 12) & 0x1FFFFFFF;
+      const auto it = resueltas_.find(base);
+      if (it == resueltas_.end()) {
+        continue;
+      }
+      if (EsProfundidadFormato(it->second.imagen.formato)) {
+        profundidad = &it->second;
+        base_profundidad = base;
+      } else {
+        color = &it->second;
+        base_color = base;
+      }
+    }
+    if (!color || !profundidad) {
+      return false;
+    }
+    const uint32_t pitch = r[kSurfaceInfo] & 0x3FFF;
+    const uint32_t info_color = r[kColorInfo];
+    const uint32_t info_profundidad = r[kDepthInfo];
+    Imagen* destino_color = ObtenerDestino(info_color & 0xFFF, (info_color >> 16) & 0xF, pitch);
+    Imagen* destino_profundidad =
+        ObtenerProfundidad(info_profundidad & 0xFFF, (info_profundidad >> 16) & 0x1, pitch);
+    if (!destino_color || destino_color->formato != color->imagen.formato || !Grabar()) {
+      return false;
+    }
+    if (dibujos_) {
+      dibujos_->TerminarPase();  // a copy cannot go inside a pass
+    }
+    // Deferred copies: the textures about to be read get theirs first, and whatever the targets lend
+    // as a source is recorded before they are written.
+    if (!pendientes_.empty()) {
+      if (pendientes_.count(base_profundidad)) {
+        GrabarCopiaPendiente(base_profundidad);
+      }
+      if (destino_profundidad) {
+        AntesDeEscribirProfundidad(*destino_profundidad);
+      }
+    }
+    if (!frontales_pendientes_.empty()) {
+      if (frontales_pendientes_.count(base_color)) {
+        GrabarCopiaFrontal(base_color);
+      }
+      AntesDeEscribirColor(*destino_color);
+    }
+    const bool con_profundidad = destino_profundidad && destino_profundidad->admite_destino_de_copia &&
+                                 destino_profundidad->formato == profundidad->imagen.formato;
+    Preparar(color->imagen);
+    Preparar(*destino_color);
+    if (con_profundidad) {
+      Preparar(profundidad->imagen);
+      Preparar(*destino_profundidad);
+    }
+    VkMemoryBarrier barrera{};
+    barrera.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrera.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                            VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    barrera.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+    dfn_.vkCmdPipelineBarrier(comandos_trabajo_,
+                              VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrera, 0, nullptr, 0, nullptr);
+    MarcarGpu(kGpuCopias);
+    AntesDeTransferir();
+    VkImageCopy copia{};
+    copia.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copia.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copia.extent = {std::min(color->imagen.ancho, destino_color->ancho),
+                    std::min(color->imagen.alto, destino_color->alto), 1};
+    copiar_imagen_(comandos_trabajo_, color->imagen.imagen, VK_IMAGE_LAYOUT_GENERAL, destino_color->imagen,
+                   VK_IMAGE_LAYOUT_GENERAL, 1, &copia);
+    destino_color->contenido_invalido = false;
+    OlvidarBorrado(*destino_color);
+    AnotarCopia(copia.extent.width, copia.extent.height);
+    if (con_profundidad) {
+      VkImageCopy copia_z{};
+      copia_z.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+      copia_z.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+      copia_z.extent = {std::min(profundidad->imagen.ancho, destino_profundidad->ancho),
+                        std::min(profundidad->imagen.alto, destino_profundidad->alto), 1};
+      copiar_imagen_(comandos_trabajo_, profundidad->imagen.imagen, VK_IMAGE_LAYOUT_GENERAL,
+                     destino_profundidad->imagen, VK_IMAGE_LAYOUT_GENERAL, 1, &copia_z);
+      destino_profundidad->contenido_invalido = false;
+      OlvidarBorrado(*destino_profundidad);
+      AnotarCopia(copia_z.extent.width, copia_z.extent.height);
+    }
+    barrera.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrera.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
+                            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dfn_.vkCmdPipelineBarrier(comandos_trabajo_, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                              0, 1, &barrera, 0, nullptr, 0, nullptr);
+    ++recargas_edram_;
+    if (recargas_edram_ <= 4 || (!con_profundidad && !recarga_sin_profundidad_avisada_)) {
+      recarga_sin_profundidad_avisada_ |= !con_profundidad;
+      REXLOG_INFO("[nativo] C2 recarga EDRAM (PS n{}): color {:08X} -> destino {:03X}, profundidad {:08X} -> {:03X}{}",
+                  peticion.ps->numero, base_color, info_color & 0xFFF, base_profundidad, info_profundidad & 0xFFF,
+                  con_profundidad ? "" : " NO copiada (el destino no admite copias o el formato no coincide)");
+    }
+    return true;
+  }
+
+  // XDroid360 (xdroid360_volcado_ps): the draws of the dumped frame worth a picture around them.
+  bool VolcarConPs(const PeticionDibujo& peticion) {
+    if (!peticion.ps || !peticion.registros) {
+      return false;
+    }
+    const std::string& lista = REXCVAR_GET(xdroid360_volcado_ps);
+    if (lista.empty()) {
+      return false;
+    }
+    size_t inicio = 0;
+    while (inicio <= lista.size()) {
+      const size_t fin = std::min(lista.find(',', inicio), lista.size());
+      if (fin > inicio && std::strtoul(lista.substr(inicio, fin - inicio).c_str(), nullptr, 10) ==
+                              peticion.ps->numero) {
+        return true;
+      }
+      inicio = fin + 1;
+    }
+    return false;
+  }
+
+  void VolcarTexturasDe(const PeticionDibujo& peticion) {
+    const uint32_t* r = peticion.registros;
+    for (const SamplerShader& s : peticion.ps->samplers) {
+      if (s.registro >= 32) {
+        continue;
+      }
+      const uint32_t* f = r + 0x4800u /* SHADER_CONSTANT_FETCH_00_0 */ + uint32_t(s.registro) * 6;
+      const uint32_t base = ((f[1] >> 12) << 12) & 0x1FFFFFFF;
+      const auto it = resueltas_.find(base);
+      Imagen* imagen = it != resueltas_.end() ? &it->second.imagen : nullptr;
+      if (imagen) {
+        Volcar(*imagen, fmt::format("antes del dibujo PS n{}: textura t{} = resuelta {:08X} (formato del fetch {})",
+                                    peticion.ps->numero, s.registro, base, f[1] & 0x3F));
+      } else {
+        volcado_indice_ += fmt::format("    antes del dibujo PS n{}: textura t{} = {:08X} (no es resuelta)\n",
+                                       peticion.ps->numero, s.registro, base);
+      }
+    }
+  }
+
+  void VolcarDestinosDe(const PeticionDibujo& peticion, bool hecho) {
+    const uint32_t* r = peticion.registros;
+    const uint32_t pitch = r[0x2000] /* RB_SURFACE_INFO */ & 0x3FFF;
+    const uint32_t mascara = r[0x2104] /* RB_COLOR_MASK */;
+    const uint32_t infos[2] = {r[0x2001] /* RB_COLOR_INFO */, r[0x2003] /* RB_COLOR1_INFO */};
+    for (uint32_t i = 0; i < 2; ++i) {
+      if (!((mascara >> (4 * i)) & 0xF)) {
+        continue;
+      }
+      const auto it = destinos_.find((uint64_t(infos[i] & 0xFFF) << 20) | (uint64_t((infos[i] >> 16) & 0xF) << 16) |
+                                     pitch);
+      if (it == destinos_.end()) {
+        volcado_indice_ += fmt::format("    tras el dibujo PS n{}: rt{} {:03X} sin imagen ({})\n",
+                                       peticion.ps->numero, i, infos[i] & 0xFFF, hecho ? "dibujado" : "NO dibujado");
+        continue;
+      }
+      Volcar(it->second, fmt::format("tras el dibujo PS n{} VS n{} ({}): rt{} {:03X} mascara {:08X}",
+                                     peticion.ps->numero, peticion.vs ? int32_t(peticion.vs->numero) : -1,
+                                     hecho ? "dibujado" : "NO dibujado", i, infos[i] & 0xFFF, mascara));
+    }
   }
 
   EstadisticasDibujos EstadisticasDeDibujos() const override {
@@ -4071,6 +4389,49 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     REXLOG_INFO("[nativo] C2: destino de profundidad base {:03X}, formato {}, {}x{}", base,
                 formato, pitch, alto);
     return &profundidades_.emplace(clave, imagen).first->second;
+  }
+
+  /*
+   * XDroid360: predicated tiling. Dragon Age: Origins draws its 1280x720 scene in two tiles (rows
+   * 0-511 and 512-719). D3D resolves the second tile with RB_COPY_DEST_BASE moved to the tile's
+   * first row inside the same texture (base + 512 rows of the 32x32-tiled layout), and the game
+   * samples the whole texture at its own base. Created as a texture of its own, the second tile
+   * was never read and the bottom 208 rows of the scene stayed black. A copy whose base lies
+   * inside an existing resolved texture of the same pitch and host format, a whole number of
+   * 32-row tile blocks below its start, goes into that texture: the base back to its start, the
+   * rows into dy, and the size that texture already has.
+   */
+  void UnirTesela(uint32_t& base, uint32_t pitch, VkFormat formato_host, uint32_t& dy, uint32_t& ancho,
+                  uint32_t& alto) {
+    const uint32_t direccion = base & 0x1FFFFFFF;
+    if (!pitch || resueltas_.count(direccion)) {
+      return;
+    }
+    const uint32_t bytes_fila = ((pitch + 31) & ~31u) * 4;
+    for (auto& [inicio, resuelta] : resueltas_) {
+      if (inicio >= direccion || resuelta.imagen.ancho != pitch || resuelta.imagen.formato != formato_host) {
+        continue;
+      }
+      const uint32_t diferencia = direccion - inicio;
+      if (diferencia % (bytes_fila * 32)) {
+        continue;
+      }
+      const uint32_t filas = diferencia / bytes_fila;
+      if (filas + dy >= resuelta.imagen.alto ||
+          uint32_t(DesplazamientoMosaico2D(0, int32_t(filas), pitch, 2)) != diferencia) {
+        continue;
+      }
+      if (avisos_teselas_.insert(direccion).second && avisos_teselas_.size() <= 16) {
+        REXLOG_INFO("[nativo] C2 tesela: la copia a {:08X} va a la textura {:08X} ({}x{}) desde la fila {}",
+                    direccion, inicio, resuelta.imagen.ancho, resuelta.imagen.alto, filas);
+      }
+      base = inicio;
+      dy += filas;
+      ancho = resuelta.imagen.ancho;
+      alto = resuelta.imagen.alto;
+      ++copias_a_tesela_;
+      return;
+    }
   }
 
   Resuelta* ObtenerResuelta(uint32_t base, uint32_t ancho, uint32_t alto, uint32_t formato,
@@ -6092,6 +6453,10 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     uint32_t clase;  // Volcar: 0 color, 1 D32S8, 2 D24S8
   };
   std::vector<VolcadoPendiente> volcado_pendientes_;  // nfsmw_volcado_sin_esperar
+  // XDroid360: RecargaEdram and BorradoProfundidadD3d.
+  uint64_t recargas_edram_ = 0;
+  uint64_t borrados_d3d_ = 0;
+  bool recarga_sin_profundidad_avisada_ = false;
   // Rear-view mirror diagnostic (AnotarCopia).
   uint64_t dibujados_ultima_copia_ = 0;
   std::unordered_map<uint32_t, CopiaDestino> copias_por_destino_;
@@ -6102,6 +6467,9 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
 
   std::unordered_map<uint64_t, Imagen> destinos_;
   std::unordered_map<uint32_t, Resuelta> resueltas_;
+  // XDroid360: UnirTesela.
+  std::unordered_set<uint32_t> avisos_teselas_;
+  uint64_t copias_a_tesela_ = 0;
   // nfsmw_nativo_diag_lectores_s (DiagLectoresAlPresentar). Ring thread only.
   struct LectorDiag {
     uint32_t ps = 0;        // PS number in the library (kLectorSwap: the Swap presenting the front buffer)

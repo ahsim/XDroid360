@@ -1,3 +1,5 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_shaders.h (GPL-3.0; see ../NOTICE.md): EntradaShader::filtros_tfetch.
 // nfsmw - native renderer, part C5a: identify in the NFSSPV library the
 // shaders the game's D3D uploads to the ring (PM4_IM_LOAD and
 // IM_LOAD_IMMEDIATE).
@@ -14,6 +16,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -61,6 +64,11 @@ struct EntradaShader {
   bool sombra_minimo = false;
   // Bytes of its float constant buffer that the SPIR-V reads (16 per register).
   uint32_t constantes_bytes = 256 * 16;
+  // XDroid360: the filters the shader's own texture fetch instructions ask for, per fetch constant: mag in
+  // bits 0-1, min 2-3, mip 4-5 (Xenos TextureFilter: 0 point, 1 linear, 2 base map, 3 the fetch
+  // constant's). 0xFF = no texture fetch for that constant. Xenia applies these over the fetch constant;
+  // Dragon Age's lightmaps have point filters in the constant and linear ones in the instruction.
+  std::array<uint8_t, 32> filtros_tfetch{};
 };
 
 struct EstadisticasShaders {

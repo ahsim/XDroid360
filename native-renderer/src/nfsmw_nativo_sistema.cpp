@@ -1,4 +1,7 @@
-﻿// nfsmw - native renderer, part C1: the app's own graphics system.
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_sistema.cpp (GPL-3.0; see ../NOTICE.md): no OpenGL ES backend; the device
+// features through our xenia-vulkan cvar; the MMIO range through the runtime (compat/rex/host.h).
+// nfsmw - native renderer, part C1: the app's own graphics system.
 //
 // What it does
 //   Replaces the Xenos emulation plugin when nfsmw_renderizador is
@@ -35,6 +38,7 @@
 #include "nfsmw_nativo_destinos.h"
 #include "nfsmw_nativo_ganchos.h"
 #include "nfsmw_nativo_shaders.h"
+#include "nfsmw_shader_library.h"  // XDroid360: AnotarBooleanos reads the container
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -57,7 +61,10 @@
 #include <rex/ui/vulkan/provider.h>
 #include <rex/ui/windowed_app_context.h>
 
-#if REX_PLATFORM_ANDROID
+#include "xenia/base/cvar.h"
+DECLARE_bool(dao_native_renderer_features);  // XDroid360: xenia-vulkan's vulkan_device.cc
+
+#if REX_PLATFORM_ANDROID && !defined(XDROID360_NATIVE_RENDERER)
 // The OpenGL ES backend (docs/motor-nativo-gles.md in NFSMW-Recompiled). Only on Android: it goes over EGL.
 #include <GLES3/gl32.h>
 #include <rex/ui/gles/presenter.h>
@@ -415,6 +422,11 @@ REXCVAR_DEFINE_INT32(nfsmw_nativo_oclusion, 1, "NFSMW",
 REXCVAR_DEFINE_STRING(nfsmw_nativo_diag_constantes_ps, "", "NFSMW",
                       "Renderizador nativo (solo pruebas): numeros de PS (separados por comas) de los que se anotan sus "
                       "12 primeras constantes, como mucho cada nfsmw_nativo_diag_constantes_ms");
+REXCVAR_DEFINE_INT32(xdroid360_diag_booleanos_ms, 0, "NFSMW",
+                     "XDroid360 (tests only): every this many ms at most, per pixel shader, log the boolean "
+                     "constant registers the game wrote, the packed value the shader gets (g_Booleans) and its "
+                     "float constants c0-c15 (DAO's lights: g_vLightParams = c1-c12). 0 = off")
+    .range(0, 60000);
 REXCVAR_DEFINE_INT32(nfsmw_nativo_diag_constantes_ms, 250, "NFSMW",
                      "Renderizador nativo (solo pruebas): intervalo minimo entre anotaciones de constantes por PS")
     .range(0, 60000);
@@ -767,6 +779,8 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
       // Steps C5c-C6: the XenosRecomp SPIR-V needs capabilities that the VkDevice only
       // enables if they are requested before it is created.
       rex::cvar::SetFlagByName("vulkan_native_shader_features", "true");
+      // XDroid360: the same, as our xenia-vulkan device creation reads it.
+      cvars::dao_native_renderer_features = true;
 #if REX_PLATFORM_ANDROID
       // Native shaders read their own buffers. They do not use Xenos memory
       // export / EDRAM emulation, which requires vertex stores and atomics.
@@ -799,7 +813,7 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
     kernel_state_ = kernel_state;
     memory_ = dispatcher->memory();
     if (!mmio_registrado_) {
-      mmio_registrado_ = memory_->AddVirtualMappedRange(kBaseMmio, kMascaraMmio, kTamanoMmio, this,
+      mmio_registrado_ = rex::memory::AddVirtualMappedRange(memory_, kBaseMmio, kMascaraMmio, kTamanoMmio, this,
                                                         &LeerMmio, &EscribirMmio);
       if (!mmio_registrado_) {
         REXLOG_ERROR("[nativo] No se pudo registrar el rango MMIO de la GPU");
@@ -2002,7 +2016,9 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
         const uint32_t direccion = datos.Leer() & 0x1FFFFFFF;
         const uint32_t longitud = datos.Leer() & 0xFFFFF;
         if (profundidad < kMaxProfundidadIndirecta) {
+          ++nivel_indirecto_;  // XDroid360: for AnotarDibujoOmitido
           BuferIndirecto(direccion, longitud, profundidad + 1);
+          --nivel_indirecto_;
         }
         break;
       }
@@ -2287,6 +2303,8 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
           if (vs_dibujo_ &&
               (ps_dibujo_ || (Registro(rex::graphics::XE_GPU_REG_RB_MODECONTROL) & 0x7) == 5)) {
             DibujarNativo();
+          } else if (!(AsegurarDestinos() && destinos_->BorradoProfundidadD3d(registros_.data()))) {
+            AnotarDibujoOmitido();  // XDroid360: these used to vanish without a trace
           }
         }
         break;
@@ -2434,6 +2452,82 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
     }
   }
 
+  // XDroid360: a draw the ring skips because neither the game's Draw* record nor the IM_LOAD
+  // packets say which shaders it uses. Counted per kind (primitive type, whether it comes from an
+  // indirect buffer, why it has no record, the IM_LOAD PS), the first ones logged one by one, and
+  // the most frequent kinds in the C5b report.
+  void AnotarDibujoOmitido() {
+    const uint32_t iniciador = Registro(rex::graphics::XE_GPU_REG_VGT_DRAW_INITIATOR);
+    const uint32_t tipo = iniciador & 0x3F;
+    const uint32_t cuenta = iniciador >> 16;
+    const bool indirecto = nivel_indirecto_ > 0;
+    const bool sin_vs = vs_dibujo_ == nullptr;
+    const int32_t ps = ps_actual_ ? int32_t(ps_actual_->numero) : -1;
+    ++dibujos_omitidos_;
+    dibujos_omitidos_indirectos_ += indirecto;
+    const uint64_t clave = (uint64_t(tipo) << 48) | (uint64_t(indirecto) << 44) |
+                           (uint64_t(motivo_emparejado_ & 0x3) << 40) | (uint64_t(sin_vs) << 36) |
+                           uint32_t(ps);
+    if (omitidos_por_clase_.size() < 1024 || omitidos_por_clase_.count(clave)) {
+      ++omitidos_por_clase_[clave];
+    }
+    if (avisos_omitidos_ < 32) {
+      ++avisos_omitidos_;
+      std::string pendiente;
+      if (!pendientes_.empty()) {
+        const RegistroDibujo& r = pendientes_.front();
+        pendiente = fmt::format("; el primero pendiente es funcion {} tipo {} cuenta {}", int(r.funcion),
+                                r.args[0], CuentaDelRegistro(r));
+      }
+      REXLOG_WARN("[nativo] C5b dibujo OMITIDO (sin {}): tipo {} cuenta {} {}; motivo {}; IM_LOAD PS n{} "
+                  "VS n{} (huella del microcodigo {:016X}, {} palabras); objetos del registro VS {:08X} "
+                  "PS {:08X}; {} pendientes{}",
+                  sin_vs ? "VS" : "PS", tipo, cuenta, indirecto ? "en un bufer indirecto" : "en el anillo",
+                  motivo_emparejado_, ps, vs_actual_ ? int32_t(vs_actual_->numero) : -1, HuellaVs(),
+                  vs_microcodigo_.size(), objeto_vs_, objeto_ps_, pendientes_.size(), pendiente);
+    }
+  }
+
+  // XDroid360 (xdroid360_diag_booleanos_ms): what a pixel shader gets for its branches and lights.
+  // The shader is named by its container's size and FNV-1a 64 (the library number depends on the
+  // packer's order), so the log can be matched with the container files offline.
+  void AnotarBooleanos() {
+    if (!ps_dibujo_) {
+      return;
+    }
+    const auto ahora = Reloj::now();
+    auto& ultimo = booleanos_ultimo_[ps_dibujo_->numero];
+    if (ahora - ultimo < std::chrono::milliseconds(diag_booleanos_ms_)) {
+      return;
+    }
+    ultimo = ahora;
+    uint64_t fnv = 0xCBF29CE484222325ull;
+    size_t tamano = 0;
+    if (ps_dibujo_->shader) {
+      for (const uint8_t byte : ps_dibujo_->shader->original) {
+        fnv = (fnv ^ byte) * 0x100000001B3ull;
+      }
+      tamano = ps_dibujo_->shader->original.size();
+    }
+    const uint32_t* b = &registros_[0x4900];
+    const uint32_t empaquetado = (b[0] & 0xFFFF) | ((b[4] & 0xFFFF) << 16);
+    std::string valores;
+    for (uint32_t k = 0; k < 16; ++k) {
+      valores += fmt::format(" c{}=(", k);
+      for (uint32_t c = 0; c < 4; ++c) {
+        float f;
+        const uint32_t bits = registros_[0x4400 + k * 4 + c];
+        std::memcpy(&f, &bits, sizeof(f));
+        valores += fmt::format("{}{:.4g}", c ? "," : "", f);
+      }
+      valores += ")";
+    }
+    REXLOG_INFO("[nativo] booleanos PS n{} (contenedor {} bytes, fnv {:016X}; VS n{}; Swap {}): registros "
+                "{:08X} {:08X} {:08X} {:08X} | {:08X} {:08X} {:08X} {:08X}; g_Booleans {:08X};{}",
+                ps_dibujo_->numero, tamano, fnv, vs_dibujo_ ? int32_t(vs_dibujo_->numero) : -1, swaps_.load(),
+                b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], empaquetado, valores);
+  }
+
   void DibujarNativo() {
     if (!AsegurarDestinos()) {
       return;
@@ -2443,6 +2537,9 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
     // flag is refreshed once per Swap: the diagnostic takes at most one frame to turn on.
     if (diag_constantes_activo_) {
       AnotarConstantesPs();
+    }
+    if (diag_booleanos_ms_ > 0) {
+      AnotarBooleanos();
     }
     PeticionDibujo peticion;
     peticion.registros = registros_.data();
@@ -2509,6 +2606,7 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
   void TrazaSwap() {
     // Once per Swap, not once per draw (see DibujarNativo).
     diag_constantes_activo_ = !REXCVAR_GET(nfsmw_nativo_diag_constantes_ps).empty();
+    diag_booleanos_ms_ = REXCVAR_GET(xdroid360_diag_booleanos_ms);
     if (trazando_) {
       trazando_ = false;
       traza_hecha_ = true;
@@ -4711,6 +4809,26 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
                   dibujos_con_vs_, dibujos_con_ps_, candidatos_incoherentes_,
                   dibujos_incoherentes_, dibujos_por_im_load_, variantes_vistas_.size(),
                   variantes_longitud_distinta_, elementos_sin_fetch_);
+      {
+        std::vector<std::pair<uint64_t, uint64_t>> clases(omitidos_por_clase_.begin(),
+                                                          omitidos_por_clase_.end());
+        std::sort(clases.begin(), clases.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        std::string lista;
+        for (size_t i = 0; i < clases.size() && i < 8; ++i) {
+          const uint64_t c = clases[i].first;
+          static constexpr const char* kMotivos[] = {"registro sin shaders", "sin registro",
+                                                     "registro incoherente", "?"};
+          lista += fmt::format(" | {}: sin {} tipo {} {} {} PS n{}", clases[i].second,
+                               ((c >> 36) & 1) ? "VS" : "PS", (c >> 48) & 0x3F,
+                               ((c >> 44) & 1) ? "indirecto" : "anillo", kMotivos[(c >> 40) & 3],
+                               int32_t(uint32_t(c)));
+        }
+        NFSMW_INFORME_SEGUN(diferir_informe,
+                            "[nativo] C5b dibujos OMITIDOS por falta de shaders desde el arranque: {} "
+                            "(de ellos {} en buferes indirectos){}",
+                            dibujos_omitidos_, dibujos_omitidos_indirectos_, lista);
+      }
     }
     if (!histograma_anotado_ && swaps_.load() >= 60) {
       histograma_anotado_ = true;
@@ -4850,6 +4968,15 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
   const EntradaShader* ps_dibujo_ = nullptr;
   uint64_t dibujos_emparejados_ = 0;
   uint64_t dibujos_sin_registro_ = 0;
+  // XDroid360: AnotarBooleanos.
+  int32_t diag_booleanos_ms_ = 0;
+  std::unordered_map<uint32_t, Reloj::time_point> booleanos_ultimo_;
+  // XDroid360: AnotarDibujoOmitido.
+  uint32_t nivel_indirecto_ = 0;
+  uint64_t dibujos_omitidos_ = 0;
+  uint64_t dibujos_omitidos_indirectos_ = 0;
+  uint32_t avisos_omitidos_ = 0;
+  std::unordered_map<uint64_t, uint64_t> omitidos_por_clase_;
   uint64_t registros_saltados_ = 0;
   uint64_t dibujos_con_vs_ = 0;
   uint64_t dibujos_con_ps_ = 0;

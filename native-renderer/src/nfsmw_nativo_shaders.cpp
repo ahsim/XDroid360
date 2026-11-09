@@ -1,3 +1,6 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_shaders.cpp (GPL-3.0; see ../NOTICE.md): the texture fetch filters of the shader's
+// control flow (FiltrosDeInstrucciones).
 // nfsmw - native renderer, part C5a (see nfsmw_nativo_shaders.h).
 //
 // 2005 container format: see Leer(). All fields are big-endian.
@@ -79,6 +82,8 @@ bool NombreEs(const Contenedor& c, size_t posicion, const char* nombre) {
 // microcode is the whole physical part. Reference: docs/shaders.md and
 // shaders/nfsmw_contenedor.h (Convertir2005). Returns the reason if it cannot be
 // read.
+void FiltrosDeInstrucciones(EntradaShader& e);  // XDroid360, below
+
 const char* Leer(const nfsmw::native::Shader& shader, EntradaShader& e) {
   const Contenedor c{shader.original};
   if (!c.Hay(0, 24)) return "contenedor demasiado corto";
@@ -182,8 +187,53 @@ const char* Leer(const nfsmw::native::Shader& shader, EntradaShader& e) {
     e.samplers.push_back(sampler);
   }
 
+  FiltrosDeInstrucciones(e);
   e.huella = XXH3_64bits(e.microcodigo.data(), e.microcodigo.size() * sizeof(uint32_t));
   return nullptr;
+}
+
+// XDroid360: EntradaShader::filtros_tfetch. The control flow sits at the start of the microcode as pairs of
+// 48-bit instructions in 96 bits (Xenia ucode.h UnpackControlFlowInstructions); each exec clause gives the
+// address and count of its 96-bit instructions and, two bits per instruction, which are fetches. Texture
+// fetches (opcode 1) carry the fetch constant in dword 0 bits 20-24 and mag/min/mip filters in dword 1
+// bits 12-17. The first filter seen for a constant is kept.
+void FiltrosDeInstrucciones(EntradaShader& e) {
+  e.filtros_tfetch.fill(0xFF);
+  const std::vector<uint32_t>& m = e.microcodigo;
+  size_t limite = m.size() / 3;  // the control flow ends where the first clause begins
+  for (size_t par = 0; par < limite; ++par) {
+    const uint32_t d0 = m[par * 3], d1 = m[par * 3 + 1], d2 = m[par * 3 + 2];
+    const uint32_t cf[2][2] = {{d0, d1 & 0xFFFF}, {(d1 >> 16) | (d2 << 16), d2 >> 16}};
+    for (const auto& c : cf) {
+      const uint32_t opcode = (c[1] >> 12) & 0xF;
+      const bool exec = (opcode >= 1 && opcode <= 6) || opcode == 13 || opcode == 14;
+      if (!exec) {
+        continue;
+      }
+      const uint32_t direccion = c[0] & 0xFFF;
+      const uint32_t cuenta = (c[0] >> 12) & 0x7;
+      const uint32_t secuencia = (c[0] >> 16) & 0xFFF;
+      if (cuenta) {
+        limite = std::min<size_t>(limite, direccion);
+      }
+      for (uint32_t i = 0; i < cuenta; ++i) {
+        if (!((secuencia >> (i * 2)) & 0x1)) {
+          continue;  // ALU
+        }
+        const size_t k = (size_t(direccion) + i) * 3;
+        if (k + 2 >= m.size() || (m[k] & 0x1F) != 1) {
+          continue;  // not a texture fetch
+        }
+        const uint32_t constante = (m[k] >> 20) & 0x1F;
+        const uint32_t w1 = m[k + 1];
+        const uint8_t filtros =
+            uint8_t(((w1 >> 12) & 0x3) | (((w1 >> 14) & 0x3) << 2) | (((w1 >> 16) & 0x3) << 4));
+        if (e.filtros_tfetch[constante] == 0xFF) {
+          e.filtros_tfetch[constante] = filtros;
+        }
+      }
+    }
+  }
 }
 
 struct ClaveCruda {

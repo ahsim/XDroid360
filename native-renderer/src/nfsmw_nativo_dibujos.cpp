@@ -1,4 +1,8 @@
-﻿// nfsmw - native renderer, steps C3, C4, C5c and C6 (see nfsmw_nativo_dibujos.h).
+﻿// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_dibujos.cpp (GPL-3.0; see ../NOTICE.md): k_4_4_4_4 textures; each vertex element
+// gets its own fetch first (CalcularEntrada); the shader's own texture fetch filters; booleans forced and
+// test diagnostics (xdroid360_*).
+// nfsmw - native renderer, steps C3, C4, C5c and C6 (see nfsmw_nativo_dibujos.h).
 //
 // What it covers
 //   - Shaders: modules of the NFSSPV library with the XenosRecomp interface
@@ -657,6 +661,24 @@ REXCVAR_DEFINE_BOOL(nfsmw_nativo_abanicos_a_listas, false, "NFSMW",
                     "por cada uno")
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
+REXCVAR_DECLARE(std::string, xdroid360_volcado_ps);
+REXCVAR_DEFINE_STRING(xdroid360_diag_omitir_vs, "", "NFSMW",
+                      "XDroid360 (tests only): vertex shader numbers (comma-separated) whose draws are not "
+                      "recorded, like nfsmw_nativo_diag_omitir_ps for pixel shaders");
+REXCVAR_DEFINE_STRING(xdroid360_diag_opaco_ps, "", "NFSMW",
+                      "XDroid360 (tests only): pixel shader numbers (comma-separated) drawn without blending "
+                      "(source ONE, destination ZERO), to see what the shader itself outputs");
+REXCVAR_DEFINE_BOOL(xdroid360_filtros_tfetch, true, "NFSMW",
+                    "XDroid360: apply the texture filters the shader's own fetch instructions ask for over the "
+                    "fetch constant's, like Xenia (Dragon Age's lightmaps came out point-sampled in blocks). "
+                    "false = the fetch constant's only, as before");
+REXCVAR_DEFINE_BOOL(xdroid360_color_vertice_bgra, false, "NFSMW",
+                    "XDroid360 (tests only): vertex colors in k_8_8_8_8 read with red and blue swapped "
+                    "(B8G8R8A8). For finding where Dragon Age's fire turns blue");
+REXCVAR_DEFINE_UINT32(xdroid360_forzar_booleanos, 0, "NFSMW",
+                      "XDroid360 (tests only): these bits are always on in the booleans the shaders get "
+                      "(g_Booleans: bits 0-15 = VS b0-b15, bits 16-31 = PS b128-b143). DAO's lit shaders "
+                      "switch their lights with PS b128-b131: 983040 (0xF0000) turns them all on");
 REXCVAR_DEFINE_BOOL(nfsmw_nativo_diag_vacias_grises, false, "NFSMW",
                     "Renderizador nativo: las texturas que aun no se soportan (cubo, 3D, "
                     "formatos pendientes) se muestrean grises en vez de a cero (solo pruebas)");
@@ -1532,6 +1554,11 @@ constexpr uint16_t kSwizzleRRRR = 0;
 constexpr uint16_t kSwizzleRGGG = (1 << 3) | (1 << 6) | (1 << 9);
 constexpr uint16_t kSwizzleRGBA = (1 << 3) | (2 << 6) | (3 << 9);
 constexpr uint16_t kSwizzleBGRA = 2 | (1 << 3) | (0 << 6) | (3 << 9);
+// XDroid360: k_4_4_4_4 seen through VK_FORMAT_B4G4R4A4_UNORM_PACK16 (the 4-bit format every Vulkan
+// device samples). The guest texel, after the 16-bit swap, has R in bits 0-3, G 4-7, B 8-11, A 12-15;
+// that view reads bits 0-3 as its A, 4-7 as R, 8-11 as G and 12-15 as B. So guest R is in host A, G in
+// host R, B in host G and A in host B (Xenia swaps the components in a load shader instead).
+constexpr uint16_t kSwizzle4444 = 3 | (0 << 3) | (1 << 6) | (2 << 9);
 
 uint32_t IndiceBc(VkFormat formato) {
   switch (formato) {
@@ -1553,6 +1580,31 @@ struct FormatoTextura {
 };
 
 // Same host formats as the emulation (vulkan/texture_cache.cpp:123-397).
+// XDroid360: "12,34" -> {12, 34}, parsed again only when the text changes.
+struct ListaNumeros {
+  std::string texto;
+  std::unordered_set<uint32_t> numeros;
+  const std::unordered_set<uint32_t>& De(const std::string& nuevo) {
+    if (nuevo != texto) {
+      texto = nuevo;
+      numeros.clear();
+      uint32_t numero = 0;
+      bool hay = false;
+      for (char c : nuevo + ",") {
+        if (c >= '0' && c <= '9') {
+          numero = numero * 10 + uint32_t(c - '0');
+          hay = true;
+        } else if (hay) {
+          numeros.insert(numero);
+          numero = 0;
+          hay = false;
+        }
+      }
+    }
+    return numeros;
+  }
+};
+
 bool FormatoTexturaDe(uint32_t formato, FormatoTextura& f) {
   switch (formato) {
     case 2:  // k_8
@@ -1561,6 +1613,9 @@ bool FormatoTexturaDe(uint32_t formato, FormatoTextura& f) {
       return true;
     case 10:  // k_8_8
       f = {VK_FORMAT_R8G8_UNORM, 1, 2, 2, kSwizzleRGGG};
+      return true;
+    case 15:  // k_4_4_4_4 (XDroid360: Dragon Age's hair, fur and face masks)
+      f = {VK_FORMAT_B4G4R4A4_UNORM_PACK16, 1, 2, 2, kSwizzle4444};
       return true;
     case 6:   // k_8_8_8_8
     case 50:  // k_8_8_8_8_AS_16_16_16_16
@@ -2085,6 +2140,22 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     if (!r || !p.vs) {
       return false;
     }
+    diag_encuadre_ = false;
+    if (p.ps && diag_encuadre_cuenta_ < 24) {
+      const std::string& lista = REXCVAR_GET(xdroid360_volcado_ps);
+      size_t inicio = 0;
+      while (!lista.empty() && inicio <= lista.size()) {
+        const size_t fin = std::min(lista.find(',', inicio), lista.size());
+        if (fin > inicio &&
+            std::strtoul(lista.substr(inicio, fin - inicio).c_str(), nullptr, 10) == p.ps->numero) {
+          diag_encuadre_ = true;
+          ++diag_encuadre_cuenta_;
+          diag_esquinas_.clear();
+          break;
+        }
+        inicio = fin + 1;
+      }
+    }
     // --- Tipo de primitiva ---------------------------------------------------
     const uint32_t modo_edram = r[gr::XE_GPU_REG_RB_MODECONTROL] & 0x7;
     if (modo_edram != uint32_t(xenos::EdramMode::kColorDepth) && modo_edram != 5) {
@@ -2122,6 +2193,10 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     }
     if (ps && !omitir_ps_.empty() && omitir_ps_.count(ps->numero)) {
       return true;
+    }
+    if (const auto& vs_omitidos = omitir_vs_.De(REXCVAR_GET(xdroid360_diag_omitir_vs));
+        !vs_omitidos.empty() && vs_omitidos.count(p.vs->numero)) {
+      return true;  // XDroid360: xdroid360_diag_omitir_vs
     }
     const uint32_t iniciador = r[gr::XE_GPU_REG_VGT_DRAW_INITIATOR];
     const uint32_t tipo = iniciador & 0x3F;
@@ -2186,6 +2261,15 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     const EntradaVertices* entrada = EntradaDe(p);
     if (!entrada) {
       return false;
+    }
+    if (diag_encuadre_) {  // XDroid360: the vertex input this draw really gets
+      std::string atributos;
+      for (const AtributoVertices& a : entrada->atributos) {
+        atributos += fmt::format(" [ubicacion {} enlace {} VkFormat {} offset {} remapeo {:03X}]", a.ubicacion,
+                                 a.enlace, int(a.formato), a.offset,
+                                 a.ubicacion < entrada->remapeos.size() ? entrada->remapeos[a.ubicacion] : 0xFFFu);
+      }
+      REXLOG_INFO("[nativo] entrada PS n{} VS n{}:{}", p.ps ? int32_t(p.ps->numero) : -1, p.vs->numero, atributos);
     }
     Etapa(0, marca);
     std::chrono::steady_clock::time_point t_indices_185 = marca;  // C6 subetapas 15-18
@@ -2630,6 +2714,10 @@ class DibujosVulkanImpl final : public DibujosVulkan {
             x[k] = leer(o, v);
             y[k] = leer(o, v + 4);
           }
+          if (diag_encuadre_ && q == 0) {
+            diag_esquinas_ = fmt::format(" esquinas ({:.3f},{:.3f}) ({:.3f},{:.3f}) ({:.3f},{:.3f})", x[0], y[0], x[1],
+                                         y[1], x[2], y[2]);
+          }
           const auto d = [&](uint32_t i, uint32_t j) { return (x[i] - x[j]) * (x[i] - x[j]) + (y[i] - y[j]) * (y[i] - y[j]); };
           const float d01 = d(0, 1), d02 = d(0, 2), d12 = d(1, 2);
           esquinas[q] = d12 >= d01 && d12 >= d02 ? 0 : d02 >= d01 ? 1 : 2;  // opposite the longest side
@@ -2751,6 +2839,20 @@ class DibujosVulkanImpl final : public DibujosVulkan {
         continue;
       }
       const uint32_t* fetch = r + kRegFetch + uint32_t(sampler.registro) * 6;
+      // XDroid360: the shader's own texture fetch filters over the fetch constant's (EntradaShader::
+      // filtros_tfetch), the way Xenia does. On a copy of the constant, so the caches below key on them too.
+      uint32_t fetch_filtrado[6];
+      if (const uint8_t filtros = ps->filtros_tfetch[sampler.registro]; filtros != 0xFF && filtros_tfetch_) {
+        std::memcpy(fetch_filtrado, fetch, sizeof(fetch_filtrado));
+        for (uint32_t campo = 0; campo < 3; ++campo) {
+          const uint32_t valor = (filtros >> (campo * 2)) & 0x3;
+          if (valor != 3) {
+            const uint32_t bit = 19 + campo * 2;  // mag 19-20, min 21-22, mip 23-24
+            fetch_filtrado[3] = (fetch_filtrado[3] & ~(0x3u << bit)) | (valor << bit);
+          }
+        }
+        fetch = fetch_filtrado;
+      }
       // nfsmw_reflejo_visibilidad. Here and not in TexturaResuelta, which, because of the caches, only sees
       // the first draw of each frame that samples it. Without checking the dimension: over-counting only
       // means the reflection gets drawn.
@@ -3116,6 +3218,20 @@ class DibujosVulkanImpl final : public DibujosVulkan {
       encuadre_pase_serie_ = pase_serie_;
       encuadre_valido_ = true;
     }
+    if (diag_encuadre_) {
+      REXLOG_INFO("[nativo] encuadre PS n{} VS n{}: tipo {} cuenta {}{}; {} (cache {}); viewport x {} y {} w {} h {} "
+                  "z {}-{}; ndc {} {} {} {}; tijera {},{} {}x{}; pase {}x{} escala {}; ventana {:08X} tijera TL {:08X} "
+                  "BR {:08X} pantalla TL {:08X} BR {:08X}; sc {:08X} vte {:08X} clip {:08X}{}",
+                  p.ps->numero, p.vs->numero, tipo, cuenta, diag_esquinas_,
+                  encuadre_vacio == 0 ? "se dibuja" : encuadre_vacio == 1 ? "VIEWPORT VACIO" : "TIJERA VACIA",
+                  encuadre_en_cache && !comprobar_encuadre, viewport.x, viewport.y, viewport.width, viewport.height,
+                  viewport.minDepth, viewport.maxDepth, ndc[0], ndc[1], ndc[2], ndc[3], tijera.offset.x,
+                  tijera.offset.y, tijera.extent.width, tijera.extent.height, pase_ancho_, pase_alto_, pase_escala_,
+                  r[gr::XE_GPU_REG_PA_SC_WINDOW_OFFSET], r[gr::XE_GPU_REG_PA_SC_WINDOW_SCISSOR_TL],
+                  r[gr::XE_GPU_REG_PA_SC_WINDOW_SCISSOR_BR], r[gr::XE_GPU_REG_PA_SC_SCREEN_SCISSOR_TL],
+                  r[gr::XE_GPU_REG_PA_SC_SCREEN_SCISSOR_BR], modo_sc, vte, r[gr::XE_GPU_REG_PA_CL_CLIP_CNTL],
+                  sin_recorte ? " [sin recorte]" : "");
+    }
     if (encuadre_vacio != 0) {
       return true;  // empty viewport or scissor: as before
     }
@@ -3143,7 +3259,8 @@ class DibujosVulkanImpl final : public DibujosVulkan {
       // so this creates no pipelines that did not already exist.
       especializacion |= (funcion_alfa & 0x7u) << kSpecFuncionAlfaDesplazamiento;
     }
-    compartidas[64] = (r[kRegBooleanos] & 0xFFFF) | ((r[kRegBooleanos + 4] & 0xFFFF) << 16);
+    compartidas[64] = (r[kRegBooleanos] & 0xFFFF) | ((r[kRegBooleanos + 4] & 0xFFFF) << 16) |
+                      REXCVAR_GET(xdroid360_forzar_booleanos);
     compartidas[65] = 0;  // g_SwappedTexcoords
     if (!(r[gr::XE_GPU_REG_PA_SU_VTX_CNTL] & 0x1)) {  // PixelCenter::kD3DZero
       const float medio[2] = {1.0f / viewport.width, -1.0f / std::abs(viewport.height)};
@@ -3282,9 +3399,10 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     static constexpr uint32_t kMezcla[4] = {
         gr::XE_GPU_REG_RB_BLENDCONTROL0, gr::XE_GPU_REG_RB_BLENDCONTROL1,
         gr::XE_GPU_REG_RB_BLENDCONTROL2, gr::XE_GPU_REG_RB_BLENDCONTROL3};
+    const bool opaco = p.ps && opaco_ps_.De(REXCVAR_GET(xdroid360_diag_opaco_ps)).count(p.ps->numero);
     for (uint32_t i = 0; i < 4; ++i) {
       if (claves[i]) {
-        clave.mezcla[i] = r[kMezcla[i]] & 0x1FFF1FFF;
+        clave.mezcla[i] = opaco ? 0x00010001u : r[kMezcla[i]] & 0x1FFF1FFF;  // XDroid360: xdroid360_diag_opaco_ps
       }
     }
     clave.mascaras = mascaras;
@@ -3805,6 +3923,12 @@ class DibujosVulkanImpl final : public DibujosVulkan {
                                           desplazamiento_vertices, 0));
     } else {
       NFSMW_SUB(10, dfn_.vkCmdDraw(cmd, cuenta, 1, base_cero ? primer_vertice : 0, 0));  // firstVertex
+    }
+    if (diag_encuadre_) {
+      REXLOG_INFO("[nativo] encuadre PS n{}: comando grabado ({} {}, primer vertice {})", p.ps->numero,
+                  con_indices ? "indexado" : "sin indices",
+                  con_indices ? (indices_de_16 ? indices16_.size() : indices_.size()) : size_t(cuenta),
+                  base_cero ? primer_vertice : 0);
     }
     if (consulta_visibilidad != UINT32_MAX) {
       contexto_->TerminarConsultaVisibilidad(consulta_visibilidad);
@@ -4858,6 +4982,7 @@ class DibujosVulkanImpl final : public DibujosVulkan {
      * serves no purpose: none of them changes within a frame.
      */
     diag_omitir_ps_texto_ = REXCVAR_GET(nfsmw_nativo_diag_omitir_ps);
+    filtros_tfetch_ = REXCVAR_GET(xdroid360_filtros_tfetch);
     diag_vertices_repetidos_ = REXCVAR_GET(nfsmw_nativo_diag_vertices_repetidos);
     dedupe_activo_ = REXCVAR_GET(nfsmw_nativo_dedupe_vertices);
     vertices_base_cero_ = REXCVAR_GET(nfsmw_nativo_vertices_base_cero) && !vertices_base_cero_apagado_;
@@ -8400,13 +8525,39 @@ class DibujosVulkanImpl final : public DibujosVulkan {
       return nullptr;
     }
     uint32_t ubicaciones_usadas = 0;
-    for (const ElementoVertice& elemento : vs.elementos) {
-      const uint32_t registro = (vs.microcodigo[size_t(elemento.instruccion) * 3] >> 12) & 0x3F;
-      const uint32_t original = vs.microcodigo[size_t(elemento.instruccion) * 3 + 1] & 0xFFF;
+    /*
+     * XDroid360: which patched fetch feeds each element, decided for all elements first. A shader can load
+     * two elements into the same register one after the other (Dragon Age's vfx0_addv.vsh loads the
+     * position into r1, uses it, then loads the colour into r1), so "the first fetch that writes the
+     * element's register" took the position for the colour: the fire's colour came from coordinates
+     * like (-111, -33, 15), red and green clamped to 0 and blue to 1, and the fire was cyan. Each element
+     * keeps its own instruction when it still writes the element's register; the others pick among the
+     * fetches nobody kept, preferring the one that writes the same components.
+     */
+    const size_t n_elementos = vs.elementos.size();
+    std::vector<size_t> asignados(n_elementos, SIZE_MAX);
+    std::vector<size_t> tomados;
+    const auto registro_de = [&](size_t k) {
+      return (vs.microcodigo[size_t(vs.elementos[k].instruccion) * 3] >> 12) & 0x3F;
+    };
+    for (size_t k = 0; k < n_elementos; ++k) {
+      const size_t i = size_t(vs.elementos[k].instruccion) * 3;
+      if (((parcheado[i] >> 12) & 0x3F) == registro_de(k) && (parcheado[i] & 0x1F) == 0) {
+        asignados[k] = i;
+        tomados.push_back(i);
+      }
+    }
+    for (size_t k = 0; k < n_elementos; ++k) {
+      if (asignados[k] != SIZE_MAX) {
+        continue;
+      }
+      const uint32_t registro = registro_de(k);
+      const uint32_t original = vs.microcodigo[size_t(vs.elementos[k].instruccion) * 3 + 1] & 0xFFF;
       size_t q = SIZE_MAX;
       for (const ElementoVertice& otro : vs.elementos) {
         const size_t i = size_t(otro.instruccion) * 3;
-        if (((parcheado[i] >> 12) & 0x3F) != registro || (parcheado[i] & 0x1F) != 0) {
+        if (((parcheado[i] >> 12) & 0x3F) != registro || (parcheado[i] & 0x1F) != 0 ||
+            std::find(tomados.begin(), tomados.end(), i) != tomados.end()) {
           continue;
         }
         if (q == SIZE_MAX) {
@@ -8417,6 +8568,16 @@ class DibujosVulkanImpl final : public DibujosVulkan {
           break;
         }
       }
+      if (q != SIZE_MAX) {
+        asignados[k] = q;
+        tomados.push_back(q);
+      }
+    }
+    for (size_t k = 0; k < n_elementos; ++k) {
+      const ElementoVertice& elemento = vs.elementos[k];
+      const uint32_t registro = registro_de(k);
+      const uint32_t original = vs.microcodigo[size_t(elemento.instruccion) * 3 + 1] & 0xFFF;
+      const size_t q = asignados[k];
       if (q == SIZE_MAX) {
         if (avisados_vs_.size() < 16 && avisados_vs_.insert(vs.numero).second) {
           std::string detalle;
@@ -8453,8 +8614,9 @@ class DibujosVulkanImpl final : public DibujosVulkan {
                     d1 & 0xFFF, codigo);
       }
       bool r11g11b10 = false;
+      const bool rojo_azul = elemento.uso == 10 && formato == 6 && REXCVAR_GET(xdroid360_color_vertice_bgra);
       const VkFormat vk = FormatoAtributo(formato, EntradaEntera(elemento.uso), (d1 >> 12) & 0x1,
-                                          (d1 >> 13) & 0x1, false, r11g11b10);
+                                          (d1 >> 13) & 0x1, rojo_azul, r11g11b10);
       if (vk == VK_FORMAT_UNDEFINED) {
         Rechazar(300 + formato, "formato de vertice todavia no soportado");
         return nullptr;
@@ -12625,6 +12787,9 @@ class DibujosVulkanImpl final : public DibujosVulkan {
   uint32_t avisos_sesgo_ = 0;
   std::string omitir_texto_;  // nfsmw_nativo_diag_omitir_ps ya leido
   std::unordered_set<uint32_t> omitir_ps_;
+  ListaNumeros omitir_vs_;  // XDroid360: xdroid360_diag_omitir_vs
+  bool filtros_tfetch_ = true;  // XDroid360: xdroid360_filtros_tfetch, read once per frame
+  ListaNumeros opaco_ps_;   // XDroid360: xdroid360_diag_opaco_ps
   uint32_t stencil_grabado_[2] = {};  // RB_STENCILREFMASK for front and back
   bool stencil_grabado_valido_ = false;
   VkIndexType tipo_indices_grabado_ = VK_INDEX_TYPE_MAX_ENUM;
@@ -12828,6 +12993,10 @@ class DibujosVulkanImpl final : public DibujosVulkan {
   uint64_t pase_clave_ = 0;
   uint64_t pase_generacion_ = UINT64_MAX;
   uint32_t pase_ancho_ = 0;
+  // XDroid360: the framing trace of xdroid360_volcado_ps draws.
+  bool diag_encuadre_ = false;
+  uint32_t diag_encuadre_cuenta_ = 0;
+  std::string diag_esquinas_;
   uint32_t pase_alto_ = 0;
   float pase_escala_ = 1.0f;  // 1 except in the scaled shadow map
   uint64_t borrados_profundidad_en_pase_ = 0;  // ZCULL

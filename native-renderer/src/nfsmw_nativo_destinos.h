@@ -1,3 +1,5 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_destinos.h (GPL-3.0; see ../NOTICE.md): the ReXGlue classes it forward-declared are Xenia's here, so their compat headers.
 // nfsmw - native renderer, part C2: render targets, copies (resolve and clear) and presentation of the
 // game's image.
 //
@@ -15,15 +17,9 @@
 #include <memory>
 #include <vector>
 
-namespace rex::memory {
-class Memory;
-}
-namespace rex::ui {
-class Presenter;
-}
-namespace rex::ui::vulkan {
-class VulkanDevice;
-}
+#include <rex/system/xmemory.h>
+#include <rex/ui/presenter.h>
+#include <rex/ui/vulkan/device.h>
 
 namespace nfsmw::nativo {
 
@@ -62,6 +58,10 @@ class DestinosNativos {
 
   // Resolve and/or clear. false if it could not be done (each cause is logged once).
   virtual bool Copiar(const RegistrosCopia& registros) = 0;
+
+  // XDroid360: a draw the ring could not identify (no shaders) that is Direct3D's own depth clear (a
+  // rectangle in depth-only mode, Z test ALWAYS with writes). true if it was done as a clear.
+  virtual bool BorradoProfundidadD3d(const uint32_t* registros) { return false; }
 
   // Submits pending work and draws the Swap's texture into the presenter's output. false if that Swap has
   // no resolved texture.

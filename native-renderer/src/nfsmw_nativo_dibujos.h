@@ -1,3 +1,5 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_dibujos.h (GPL-3.0; see ../NOTICE.md): the ReXGlue classes it forward-declared are Xenia's here, so their compat headers.
 // nfsmw - native renderer, parts C3, C4, C5c and C6: drawing with the NFSSPV library shaders onto the
 // C2 render targets.
 //
@@ -18,9 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace rex::memory {
-class Memory;
-}
+#include <rex/system/xmemory.h>
 
 namespace nfsmw::nativo {
 

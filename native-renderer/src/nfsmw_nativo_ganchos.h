@@ -1,3 +1,5 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_ganchos.h (GPL-3.0; see ../NOTICE.md): ConfigurarDispositivoD3D.
 // nfsmw - native renderer, part C5b: what the ring does not say about each draw, taken on the game
 // thread.
 //
@@ -107,6 +109,10 @@ inline bool TramoDeVolcado(uint32_t registro, uint32_t cuenta) {
 // The native system turns it on when the ring thread starts and off at shutdown. When off, FlushState
 // always takes the game's path: with the Xenos emulation nobody would understand the marker.
 void ActivarConsumidorMarcadores(bool activo);
+#if defined(XDROID360_NATIVE_RENDERER)
+// XDroid360: the D3D device offsets of the bound VS and PS (the game's hooks set them).
+void ConfigurarDispositivoD3D(uint32_t desplazamiento_vs, uint32_t desplazamiento_ps);
+#endif
 // Ring thread only, when reading a check marker: whether the register state matches the marker. A
 // difference (or a malformed marker) turns the marker path off for the rest of the session.
 void AnotarComprobacionMarcador(bool igual, uint32_t secuencia, uint32_t registro, uint32_t en_registros,

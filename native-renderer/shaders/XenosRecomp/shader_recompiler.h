@@ -1,3 +1,6 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// shaders/XenosRecomp/shader_recompiler.h (MIT, hedge-dev and contributors; see ../LICENSE.md):
+// boolean constants the constant table leaves out (booleanMask).
 #pragma once
 
 #include "shader.h"
@@ -30,6 +33,8 @@ struct ShaderRecompiler : StringBuffer
     std::unordered_map<uint32_t, std::string> interpolators;
     std::unordered_map<uint32_t, const ConstantInfo*> float4Constants;
     std::unordered_map<uint32_t, const char*> boolConstants;
+    // XDroid360: see shader_recompiler.cpp.
+    std::string booleanMask(uint32_t boolAddress) const;
     std::unordered_map<uint32_t, const char*> samplers;
     std::unordered_map<uint32_t, uint32_t> ifEndLabels;
     uint32_t specConstantsMask = 0;

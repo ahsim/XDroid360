@@ -25,6 +25,12 @@
 // them locally. All off by default; toggled per run in config.toml [xenia].
 // The device then reports the feature as absent everywhere (properties(),
 // extensions(), the device listing in the log).
+// DAO: the features the native renderer (native-renderer/) needs, as ReXGlue's
+// vulkan_native_shader_features (nfsmw-android's sdk/src/ui/vulkan/vulkan_device.cpp, BSD-3-Clause).
+DEFINE_bool(dao_native_renderer_features, false,
+            "DAO: enable descriptor indexing and the other device features the native "
+            "renderer uses (set by the runtime when [video] gpu_renderer is native).",
+            "Vulkan");
 DEFINE_bool(dao_disable_geometry_shader, false,
             "DAO (testing): act as if the GPU had no geometry shaders (points "
             "and rectangles expanded in the vertex shader, as on PanVK).",
@@ -201,6 +207,14 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     // #238.
     XE_UI_VULKAN_STRUCT_EXTENSION(EXT_memory_budget)
   }
+  // DAO: the native renderer on Vulkan 1.1 drivers: its texture heaps (runtime arrays, partially
+  // bound, updated after bind). Core in 1.2; its dependency VK_KHR_maintenance3 is core in 1.1.
+  bool ext_1_2_EXT_descriptor_indexing = false;
+  if (get_physical_device_properties2_supported &&
+      cvars::dao_native_renderer_features) {
+    // #162.
+    XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(EXT_descriptor_indexing, 1, 2)
+  }
   if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 1, 0)) {
     // #414.
     XE_UI_VULKAN_STRUCT_PROMOTED_EXTENSION(KHR_maintenance4, 1, 3)
@@ -342,6 +356,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   VulkanFeatures<VkPhysicalDeviceHostQueryResetFeatures,
                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES>
       features_EXT_host_query_reset;
+  VulkanFeatures<
+      VkPhysicalDeviceDescriptorIndexingFeatures,
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES>
+      features_1_2_EXT_descriptor_indexing;
   VulkanFeatures<VkPhysicalDeviceVulkan13Features,
                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES>
       features_1_3;
@@ -380,9 +398,16 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   if (get_physical_device_properties2_supported) {
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 2, 0)) {
       features_1_2.Link(supported_features_2, device_create_info);
-    } else if (ext_1_2_EXT_host_query_reset) {
-      features_EXT_host_query_reset.Link(supported_features_2,
-                                         device_create_info);
+    } else {
+      if (ext_1_2_EXT_host_query_reset) {
+        features_EXT_host_query_reset.Link(supported_features_2,
+                                           device_create_info);
+      }
+      // DAO: the native renderer's descriptor indexing on Vulkan 1.1.
+      if (ext_1_2_EXT_descriptor_indexing) {
+        features_1_2_EXT_descriptor_indexing.Link(supported_features_2,
+                                                  device_create_info);
+      }
     }
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 3, 0)) {
       features_1_3.Link(supported_features_2, device_create_info);
@@ -692,7 +717,9 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   XE_UI_VULKAN_LIMIT(optimalBufferCopyRowPitchAlignment)
   XE_UI_VULKAN_LIMIT(nonCoherentAtomSize)
 
-  if (with_gpu_emulation) {
+  // DAO: the native renderer needs these optional raster, sampler and query features too
+  // (without Xenia's mandatory checks), as ReXGlue's vulkan_native_shader_features enables them.
+  if (with_gpu_emulation || cvars::dao_native_renderer_features) {
     XE_UI_VULKAN_FEATURE(robustBufferAccess)
     XE_UI_VULKAN_FEATURE(fullDrawIndexUint32)
     XE_UI_VULKAN_FEATURE(independentBlend)
@@ -712,7 +739,7 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   }
 
   if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 2, 0)) {
-    if (with_gpu_emulation) {
+    if (with_gpu_emulation || cvars::dao_native_renderer_features) {
       XE_UI_VULKAN_FEATURE_2(features_1_2, samplerMirrorClampToEdge);
       XE_UI_VULKAN_FEATURE_2(features_1_2, uniformBufferStandardLayout);
       XE_UI_VULKAN_FEATURE_2(features_1_2, scalarBlockLayout);
@@ -725,6 +752,30 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     if (ext_1_2_EXT_host_query_reset && with_gpu_emulation) {
       XE_UI_VULKAN_FEATURE_2(features_EXT_host_query_reset, hostQueryReset);
     }
+  }
+  // DAO: the native renderer's features (dao_native_renderer_features), only those the device has.
+  if (cvars::dao_native_renderer_features) {
+    if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 2, 0)) {
+      XE_UI_VULKAN_FEATURE_2(features_1_2, bufferDeviceAddress);
+      XE_UI_VULKAN_FEATURE_2(features_1_2, runtimeDescriptorArray);
+      XE_UI_VULKAN_FEATURE_2(features_1_2, descriptorBindingPartiallyBound);
+      XE_UI_VULKAN_FEATURE_2(features_1_2,
+                             descriptorBindingSampledImageUpdateAfterBind);
+      XE_UI_VULKAN_FEATURE_2(features_1_2,
+                             descriptorBindingUpdateUnusedWhilePending);
+    } else if (ext_1_2_EXT_descriptor_indexing) {
+      XE_UI_VULKAN_FEATURE_2(features_1_2_EXT_descriptor_indexing,
+                             runtimeDescriptorArray);
+      XE_UI_VULKAN_FEATURE_2(features_1_2_EXT_descriptor_indexing,
+                             descriptorBindingPartiallyBound);
+      XE_UI_VULKAN_FEATURE_2(features_1_2_EXT_descriptor_indexing,
+                             descriptorBindingSampledImageUpdateAfterBind);
+      XE_UI_VULKAN_FEATURE_2(features_1_2_EXT_descriptor_indexing,
+                             descriptorBindingUpdateUnusedWhilePending);
+    }
+    XE_UI_VULKAN_FEATURE(shaderInt64)
+    XE_UI_VULKAN_FEATURE(shaderSampledImageArrayDynamicIndexing)
+    XE_UI_VULKAN_FEATURE(pipelineStatisticsQuery)
   }
   device->extensions_.ext_1_2_EXT_host_query_reset =
       ext_1_2_EXT_host_query_reset;

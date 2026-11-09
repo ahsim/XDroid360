@@ -1,3 +1,6 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_espera_anillo.cpp (GPL-3.0; see ../NOTICE.md): Most Wanted's busy-wait hooks left out;
+// the ring progress counters stay.
 // nfsmw - the game's D3D waits without spinning (native renderer).
 //
 // WHY (PC profile of a race)
@@ -107,7 +110,7 @@ bool EsperarProgresoAnillo(uint32_t visto, std::chrono::microseconds limite) {
 }  // namespace nfsmw::nativo
 
 // Most Wanted's D3D waits. NFS Carbon hooks its own (nfscarbon-recomp, carbon_graphics.cpp).
-#if !defined(NFSC_RECOMP)
+#if !defined(NFSC_RECOMP) && !defined(XDROID360_NATIVE_RENDERER)
 namespace {
 
 constexpr uint32_t kOffLecturaDevuelta = 10384;  // pointer to the word where the GPU reports the read pointer

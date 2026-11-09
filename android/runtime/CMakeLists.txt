@@ -45,6 +45,16 @@ endif()
 
 add_subdirectory(${DAO_ROOT}/xenia-vulkan ${CMAKE_BINARY_DIR}/xenia-vulkan)
 
+# ---------------------------------------------------------------- the native renderer
+
+# The EDRAM-free renderer from nfsmw-android (native-renderer/NOTICE.md), next to Xenia's GPU
+# emulation; config.toml [xenia] dao_gpu_renderer picks one at startup (native_host.h).
+set(XDROID360_SOURCE_ROOT ${DAO_ROOT})
+set(XDROID360_DEPS_ROOT ${DAO_ROOT})
+set(XDROID360_GEN_DIR ${CMAKE_BINARY_DIR}/xenia-vulkan/gen)
+add_subdirectory(${DAO_ROOT}/native-renderer ${CMAKE_BINARY_DIR}/native-renderer)
+add_dependencies(native-renderer xenia-spirv-shaders)
+
 # ---------------------------------------------------------------- XenonUtils (XEX loading)
 
 add_library(XenonUtils STATIC
@@ -123,7 +133,8 @@ add_library(daodroid-runtime STATIC
     ${DAO_SRC}/hash.cpp
     ${DAO_SRC}/program.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/profiler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/xenia_host_vulkan.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/xenia_host_vulkan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/native_host.cpp)
 target_include_directories(daodroid-runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${DAO_SRC}
@@ -144,7 +155,18 @@ set(DAO_RUNTIME_OPTIONS
     -ffp-contract=off
     -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function)
 target_compile_options(daodroid-runtime PRIVATE ${DAO_RUNTIME_OPTIONS})
-target_link_libraries(daodroid-runtime PUBLIC XenonUtils dao-xenia-vulkan libavcodec libavutil log)
+target_link_libraries(daodroid-runtime PUBLIC XenonUtils dao-xenia-vulkan native-renderer libavcodec libavutil log)
+# The native renderer is linked: the game layer's hooks into it (DAORecomp's gpu/native_hooks.cpp,
+# under XDROID360_NATIVE_RENDERER) are compiled, and they and native_host.cpp see the renderer's
+# headers (its compat layer first).
+target_compile_definitions(daodroid-runtime PRIVATE XDROID360_NATIVE_RENDERER=1)
+set(DAO_NATIVE_RENDERER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/native_host.cpp)
+if (EXISTS ${DAO_SRC}/gpu/native_hooks.cpp)
+    target_sources(daodroid-runtime PRIVATE ${DAO_SRC}/gpu/native_hooks.cpp)
+    list(APPEND DAO_NATIVE_RENDERER_SOURCES ${DAO_SRC}/gpu/native_hooks.cpp)
+endif()
+set_source_files_properties(${DAO_NATIVE_RENDERER_SOURCES} PROPERTIES
+    INCLUDE_DIRECTORIES "${DAO_ROOT}/native-renderer/compat;${DAO_ROOT}/native-renderer/src")
 if (NOT XDROID360_PROFILE_BUILD)
     target_link_libraries(daodroid-runtime PUBLIC daobuildinfo daoppc)
 endif()

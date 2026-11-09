@@ -1,3 +1,7 @@
+// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
+// app/src/nfsmw_nativo_ganchos.cpp (GPL-3.0; see ../NOTICE.md): Most Wanted's hooks left out; the
+// game's own hooks call IdentificarCreacion/RecordarCreacion/AnotarDibujo, and set the D3D device
+// offsets of the bound shaders (ConfigurarDispositivoD3D).
 // nfsmw - native renderer, step C5b (see nfsmw_nativo_ganchos.h).
 
 #include "nfsmw_nativo_ganchos.h"
@@ -54,6 +58,10 @@ namespace {
 // same words (sub_826FBB68).
 constexpr uint32_t kDispositivoVs = 0x3080;
 constexpr uint32_t kDispositivoPs = 0x307C;
+#elif defined(XDROID360_NATIVE_RENDERER)
+// XDroid360: per game, from the game's hooks (ConfigurarDispositivoD3D).
+uint32_t kDispositivoVs = 0;
+uint32_t kDispositivoPs = 0;
 #else
 constexpr uint32_t kDispositivoVs = 0x4FE8;
 constexpr uint32_t kDispositivoPs = 0x3290;
@@ -963,6 +971,14 @@ void AnotarVegetacionModelo(uint16_t banderas, const DetalleVegetacion& anillo) 
   vegetacion::Desacuerdo(vegetacion::kQueModelo, banderas, anillo);
 }
 
+#if defined(XDROID360_NATIVE_RENDERER)
+// XDroid360: where the game's D3D device keeps the bound vertex and pixel shader objects.
+void ConfigurarDispositivoD3D(uint32_t desplazamiento_vs, uint32_t desplazamiento_ps) {
+  kDispositivoVs = desplazamiento_vs;
+  kDispositivoPs = desplazamiento_ps;
+}
+#endif
+
 EstadisticasGanchos EstadisticasDeGanchos() {
   EstadisticasGanchos e;
   e.creados_vs = g_creados_vs.load(std::memory_order_relaxed);
@@ -982,7 +998,7 @@ EstadisticasGanchos EstadisticasDeGanchos() {
 // The experimental library (nfsmw_shader_hooks.cpp) hooks the same constructors; with it enabled these
 // are not compiled.
 // NFS Carbon has its own hooks (nfscarbon-recomp/src/carbon_nativo_ganchos.cpp): these addresses are Most Wanted's.
-#if !defined(NFSMW_NATIVE_SHADER_LIBRARY) && !defined(NFSC_RECOMP)
+#if !defined(NFSMW_NATIVE_SHADER_LIBRARY) && !defined(NFSC_RECOMP) && !defined(XDROID360_NATIVE_RENDERER)
 // r3 = original container; they return the object in r3. The original is always called and no PPC
 // register is touched.
 REX_EXTERN(__imp__sub_8259BC90);
@@ -1018,7 +1034,7 @@ REX_HOOK_RAW(sub_8259C038) {  // vertex shader
  * switch off with DIFERENCIA).
  * It changes no PPC register.
  */
-#if !defined(NFSC_RECOMP)
+#if !defined(NFSC_RECOMP) && !defined(XDROID360_NATIVE_RENDERER)
 REX_EXTERN(__imp__sub_825A2FB8);
 REX_HOOK_RAW(sub_825A2FB8) {
   namespace mc = nfsmw::nativo::microcodigo;

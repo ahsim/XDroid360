@@ -130,6 +130,19 @@ class VulkanDevice {
 
     bool hostQueryReset = false;
 
+    // DAO: the native renderer (native-renderer/, dao_native_renderer_features): descriptor
+    // indexing (VK_EXT_descriptor_indexing, #162, promoted to 1.2) for its texture heaps, and
+    // what else it uses when present.
+
+    bool runtimeDescriptorArray = false;
+    bool shaderSampledImageArrayDynamicIndexing = false;
+    bool descriptorBindingPartiallyBound = false;
+    bool descriptorBindingSampledImageUpdateAfterBind = false;
+    bool descriptorBindingUpdateUnusedWhilePending = false;
+    bool shaderInt64 = false;
+    bool pipelineStatisticsQuery = false;
+    bool bufferDeviceAddress = false;
+
     // VK_KHR_portability_subset (#164)
 
     bool constantAlphaColorBlendFactors = false;
