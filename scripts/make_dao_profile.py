@@ -75,6 +75,8 @@ LICENSES = [
     ("FidelityFX-FSR.txt", XE_TP / "FidelityFX-FSR" / "license.txt", "upscaling shader", False),
     ("SDL.txt", RECOMP / "thirdparty" / "SDL" / "LICENSE.txt", "SDL 3 headers (the library is the launcher's)", False),
     ("linkernsbypass.txt", ROOT / "android" / "app" / "src" / "main" / "cpp" / "linkernsbypass" / "LICENSE", "linker namespaces", False),
+    ("native-renderer-GPL-3.0.txt", ROOT / "native-renderer" / "LICENSE", "the native renderer (from nfsmw-android)", False),
+    ("native-renderer-NOTICE.md", ROOT / "native-renderer" / "NOTICE.md", "the native renderer's origin and credits", False),
 ]
 
 
@@ -139,6 +141,8 @@ PROFILE_LIBS = [
     "xenia-vulkan/libxxhash.a", "xenia-vulkan/libsnappy.a",
     "xenia-vulkan/libxenia-ui-vulkan.a", "xenia-vulkan/libxenia-ui.a", "xenia-vulkan/libimgui.a",
     "xenia-vulkan/libxenia-base.a", "xenia-vulkan/libfmt.a", "runtime/liblibavcodec.a", "runtime/liblibavutil.a",
+    # The native renderer (GPL-3.0, from nfsmw-android): off unless config.toml asks for it.
+    "native-renderer/libnative-renderer.a",
 ]
 
 
