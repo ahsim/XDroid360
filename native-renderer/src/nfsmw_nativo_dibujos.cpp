@@ -1,6 +1,6 @@
 ﻿// XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
-// app/src/nfsmw_nativo_dibujos.cpp (GPL-3.0; see ../NOTICE.md): k_4_4_4_4 textures; each vertex element
-// gets its own fetch first (CalcularEntrada); the shader's own texture fetch filters; booleans forced and
+// app/src/nfsmw_nativo_dibujos.cpp (GPL-3.0; see ../NOTICE.md): k_4_4_4_4 textures; which patched
+// fetch feeds each vertex element (CalcularEntrada); the shader's own texture fetch filters; booleans forced and
 // test diagnostics (xdroid360_*).
 // nfsmw - native renderer, steps C3, C4, C5c and C6 (see nfsmw_nativo_dibujos.h).
 //
@@ -668,6 +668,10 @@ REXCVAR_DEFINE_STRING(xdroid360_diag_omitir_vs, "", "NFSMW",
 REXCVAR_DEFINE_STRING(xdroid360_diag_opaco_ps, "", "NFSMW",
                       "XDroid360 (tests only): pixel shader numbers (comma-separated) drawn without blending "
                       "(source ONE, destination ZERO), to see what the shader itself outputs");
+REXCVAR_DEFINE_BOOL(xdroid360_entrada_propia, true, "NFSMW",
+                    "XDroid360: each vertex element keeps its own fetch instruction first (CalcularEntrada); "
+                    "false = the first fetch that writes the element's register, as before (the fire's colour "
+                    "came from the position that way)");
 REXCVAR_DEFINE_BOOL(xdroid360_filtros_tfetch, true, "NFSMW",
                     "XDroid360: apply the texture filters the shader's own fetch instructions ask for over the "
                     "fetch constant's, like Xenia (Dragon Age's lightmaps came out point-sampled in blocks). "
@@ -8526,13 +8530,19 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     }
     uint32_t ubicaciones_usadas = 0;
     /*
-     * XDroid360: which patched fetch feeds each element, decided for all elements first. A shader can load
-     * two elements into the same register one after the other (Dragon Age's vfx0_addv.vsh loads the
-     * position into r1, uses it, then loads the colour into r1), so "the first fetch that writes the
-     * element's register" took the position for the colour: the fire's colour came from coordinates
-     * like (-111, -33, 15), red and green clamped to 0 and blue to 1, and the fire was cyan. Each element
-     * keeps its own instruction when it still writes the element's register; the others pick among the
-     * fetches nobody kept, preferring the one that writes the same components.
+     * XDroid360: which patched fetch feeds each element. A shader can load two elements into the same
+     * register, and D3D can repoint fetches:
+     *  - vfx0_addv.vsh loads the position into r1, uses it, then loads the colour into r1 (both xyzw);
+     *  - vfx0_cs_addv.vsh has the colour's and the texcoord's fetches swapped by D3D (r2 and r1), and the
+     *    position also goes to r1;
+     *  - static1.vsh loads texcoord0 into r2.xy and texcoord1 into r2.zw, and D3D repoints texcoord1's
+     *    fetch so that it no longer writes zw (the walls' lightmap coordinates come from texcoord0's).
+     * Rule: an element keeps its own instruction when, patched, it still writes the element's register
+     * and the same components. The others take, among the fetches writing their register and the same
+     * components, the first nobody kept; with none, the first writing those components, else the first
+     * writing the register (the rule before, which gave the walls their coordinates). "First" alone fed
+     * the fire's colour from the position (cyan); "own" alone broke the walls (bright blocks) and the
+     * flames (streaks).
      */
     const size_t n_elementos = vs.elementos.size();
     std::vector<size_t> asignados(n_elementos, SIZE_MAX);
@@ -8540,9 +8550,17 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     const auto registro_de = [&](size_t k) {
       return (vs.microcodigo[size_t(vs.elementos[k].instruccion) * 3] >> 12) & 0x3F;
     };
-    for (size_t k = 0; k < n_elementos; ++k) {
+    const auto original_de = [&](size_t k) {
+      return vs.microcodigo[size_t(vs.elementos[k].instruccion) * 3 + 1] & 0xFFF;
+    };
+    const auto escribe = [&](size_t i, uint32_t registro, uint32_t original) {
+      return ((parcheado[i] >> 12) & 0x3F) == registro && (parcheado[i] & 0x1F) == 0 &&
+             MascaraEscrita(parcheado[i + 1] & 0xFFF) == MascaraEscrita(original);
+    };
+    const bool propia = REXCVAR_GET(xdroid360_entrada_propia);
+    for (size_t k = 0; k < n_elementos && propia; ++k) {
       const size_t i = size_t(vs.elementos[k].instruccion) * 3;
-      if (((parcheado[i] >> 12) & 0x3F) == registro_de(k) && (parcheado[i] & 0x1F) == 0) {
+      if (escribe(i, registro_de(k), original_de(k))) {
         asignados[k] = i;
         tomados.push_back(i);
       }
@@ -8552,26 +8570,26 @@ class DibujosVulkanImpl final : public DibujosVulkan {
         continue;
       }
       const uint32_t registro = registro_de(k);
-      const uint32_t original = vs.microcodigo[size_t(vs.elementos[k].instruccion) * 3 + 1] & 0xFFF;
-      size_t q = SIZE_MAX;
+      const uint32_t original = original_de(k);
+      size_t primera = SIZE_MAX, igual = SIZE_MAX, libre = SIZE_MAX;
       for (const ElementoVertice& otro : vs.elementos) {
         const size_t i = size_t(otro.instruccion) * 3;
-        if (((parcheado[i] >> 12) & 0x3F) != registro || (parcheado[i] & 0x1F) != 0 ||
-            std::find(tomados.begin(), tomados.end(), i) != tomados.end()) {
+        if (((parcheado[i] >> 12) & 0x3F) != registro || (parcheado[i] & 0x1F) != 0) {
           continue;
         }
-        if (q == SIZE_MAX) {
-          q = i;
+        if (primera == SIZE_MAX) {
+          primera = i;
         }
-        if (MascaraEscrita(parcheado[i + 1] & 0xFFF) == MascaraEscrita(original)) {
-          q = i;  // the one that writes the same components
-          break;
+        if (escribe(i, registro, original)) {
+          if (igual == SIZE_MAX) {
+            igual = i;
+          }
+          if (libre == SIZE_MAX && std::find(tomados.begin(), tomados.end(), i) == tomados.end()) {
+            libre = i;
+          }
         }
       }
-      if (q != SIZE_MAX) {
-        asignados[k] = q;
-        tomados.push_back(q);
-      }
+      asignados[k] = propia && libre != SIZE_MAX ? libre : igual != SIZE_MAX ? igual : primera;
     }
     for (size_t k = 0; k < n_elementos; ++k) {
       const ElementoVertice& elemento = vs.elementos[k];

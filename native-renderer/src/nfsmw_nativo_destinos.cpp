@@ -1,7 +1,7 @@
 // XDroid360: changed from nfsmw-android 71b4c8056481fb8652eb0e7433017644e5df54f5,
 // app/src/nfsmw_nativo_destinos.cpp (GPL-3.0; see ../NOTICE.md): a tiled resolve goes into the texture it
 // belongs to (UnirTesela); Dragon Age's EDRAM reload done as copies (RecargaEdram); D3D's depth clears and
-// the color targets they alias (BorradoProfundidadD3d); test dumps around chosen draws
+// the color targets they alias (BorradoProfundidadD3d); new depth targets start at 0; test dumps around chosen draws
 // (xdroid360_volcado_ps).
 // nfsmw - native renderer, part C2 (see nfsmw_nativo_destinos.h).
 //
@@ -109,12 +109,24 @@ REXCVAR_DEFINE_BOOL(nfsmw_volcado, false, "NFSMW",
                     "siguiente fotograma se guarda paso a paso en volcado/NNN: cada destino de color tal como "
                     "lo dejan sus dibujos al resolverlo y la imagen presentada, en PNG, con indice.txt. El "
                     "fichero se borra al empezar. Lento, solo para pruebas");
+REXCVAR_DEFINE_BOOL(xdroid360_profundidad_inicial_cero, true, "NFSMW",
+                    "XDroid360: a new depth target starts at depth 0 (stencil 0), like Xenia's zeroed EDRAM, "
+                    "instead of 1.0. Dragon Age resolves its shadow map once at boot with nothing drawn: at 1.0 "
+                    "the meshes lit by shadowed lights came out fully lit next to unlit ones (bright blocks on "
+                    "walls); at 0 they are in shadow, as on Xenia. false = 1.0, as before");
 REXCVAR_DEFINE_BOOL(xdroid360_borrado_d3d, true, "NFSMW",
                     "XDroid360: Direct3D's own depth clears (a rectangle in depth-only EDRAM mode, Z test "
                     "ALWAYS with writes, drawn with D3D's internal shaders the library does not have) done as "
                     "clears to RB_DEPTH_CLEAR of every depth target at that EDRAM base, whatever its pitch: "
                     "D3D clears the 1280x720 depth as 640 wide with 4x MSAA, the same EDRAM. false = dropped "
                     "as before");
+REXCVAR_DEFINE_INT32(xdroid360_borrado_d3d_color, 1, "NFSMW",
+                     "XDroid360: whether D3D's depth-mode clears also clear the 8-bit color targets at the same "
+                     "EDRAM base and width. 0 = never, 1 = always, 2 = only when the clear value is 0. The value "
+                     "is read with alpha in its low byte: Dragon Age clears its 160x160 portrait and minimap "
+                     "board with depth 1.0 (FFFFFF00), which has to come out as transparent white for the map to "
+                     "show through the position layer")
+    .range(0, 2);
 REXCVAR_DEFINE_BOOL(xdroid360_recarga_edram, true, "NFSMW",
                     "XDroid360: the EDRAM reload idiom (Dragon Age: Origins' xenonreload after predicated "
                     "tiling) done as image copies: a rectangle-list draw whose second color target sits at "
@@ -2963,12 +2975,20 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     RegistrosCopia reg;
     reg.rb_depth_info = info;
     reg.rb_depth_clear = r[kDepthClear];
-    // The pitches of the depth images at this base (the clear's own included, created if new).
-    std::vector<uint32_t> pitches{r[kSurfaceInfo] & 0x3FFF};
+    // The widths this clear covers: its own pitch and, with 4x MSAA (2x2 samples per pixel), twice that,
+    // the same EDRAM seen at one sample per pixel. Only images of those widths are cleared: a clear of the
+    // 160x160 portrait and minimap board (80 wide at 4x) must not touch the 1280-wide scene, nor the
+    // scene's clear (640 wide at 4x) the board, though all of them start at the same EDRAM base.
+    const uint32_t pitch_borrado = r[kSurfaceInfo] & 0x3FFF;
+    const bool msaa_4x = ((r[kSurfaceInfo] >> 16) & 0x3) == 2;
+    const auto cubre = [&](uint32_t pitch) {
+      return pitch == pitch_borrado || (msaa_4x && pitch == pitch_borrado * 2);
+    };
+    std::vector<uint32_t> pitches{pitch_borrado};
     for (const auto& [clave, imagen] : profundidades_) {
       if (uint32_t(clave >> 20) == base && ((clave >> 16) & 0xF) == ((info >> 16) & 0x1)) {
         const uint32_t pitch = uint32_t(clave & 0xFFFF);
-        if (std::find(pitches.begin(), pitches.end(), pitch) == pitches.end()) {
+        if (cubre(pitch) && std::find(pitches.begin(), pitches.end(), pitch) == pitches.end()) {
           pitches.push_back(pitch);
         }
       }
@@ -2987,20 +3007,25 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
      * the same 32 bits, a byte per channel as the resolve clears do.
      */
     uint32_t colores = 0;
-    if (Grabar()) {
+    const int32_t modo_color = REXCVAR_GET(xdroid360_borrado_d3d_color);
+    if ((modo_color == 1 || (modo_color == 2 && reg.rb_depth_clear == 0)) && Grabar()) {
       for (auto& [clave, imagen] : destinos_) {
         const uint32_t formato = uint32_t(clave >> 16) & 0xF;
-        if (uint32_t(clave >> 20) != base || (formato != 0 && formato != 1) || imagen.imagen == VK_NULL_HANDLE) {
+        if (uint32_t(clave >> 20) != base || (formato != 0 && formato != 1) || imagen.imagen == VK_NULL_HANDLE ||
+            !cubre(uint32_t(clave & 0xFFFF))) {
           continue;
         }
         Preparar(imagen);
         AntesDeEscribirColor(imagen);
         RotarFrontalAntesDeBorrar(imagen);
         imagen.contenido_invalido = false;
+        // Alpha in the low byte, then blue, green and red: FFFFFF00 (depth 1.0, stencil 0) is transparent
+        // white, as the position layer over the minimap needs; 0 stays transparent black.
         VkClearColorValue color{};
-        for (uint32_t j = 0; j < 4; ++j) {
-          color.float32[j] = float((reg.rb_depth_clear >> (j * 8)) & 0xFF) * (1.0f / 255.0f);
-        }
+        color.float32[3] = float(reg.rb_depth_clear & 0xFF) * (1.0f / 255.0f);
+        color.float32[2] = float((reg.rb_depth_clear >> 8) & 0xFF) * (1.0f / 255.0f);
+        color.float32[1] = float((reg.rb_depth_clear >> 16) & 0xFF) * (1.0f / 255.0f);
+        color.float32[0] = float((reg.rb_depth_clear >> 24) & 0xFF) * (1.0f / 255.0f);
         MarcarGpu(kGpuBorrados);
         AntesDeTransferir();
         dfn_.vkCmdClearColorImage(comandos_trabajo_, imagen.imagen, VK_IMAGE_LAYOUT_GENERAL, &color, 1,
@@ -3009,10 +3034,16 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
         ++colores;
       }
     }
-    if (++borrados_d3d_ <= 4) {
-      REXLOG_INFO("[nativo] C2 borrado de profundidad de D3D: base {:03X}, valor {:08X}, {} imagenes de "
-                  "profundidad y {} de color",
-                  base, reg.rb_depth_clear, pitches.size(), colores);
+    ++borrados_d3d_;
+    // Each new kind of clear once (base, pitch, MSAA, value, what it reached): what decides which images a
+    // clear should reach.
+    const uint64_t tipo_borrado = (uint64_t(base) << 52) | (uint64_t(pitch_borrado) << 38) |
+                                  (uint64_t(msaa_4x) << 37) | (uint64_t(colores) << 33) | reg.rb_depth_clear;
+    if (borrados_d3d_vistos_.size() < 64 && borrados_d3d_vistos_.insert(tipo_borrado).second) {
+      REXLOG_INFO("[nativo] C2 borrado de profundidad de D3D: base {:03X}, pitch {}{}, valor {:08X}, {} imagenes "
+                  "de profundidad y {} de color (modo de color {})",
+                  base, pitch_borrado, msaa_4x ? " con MSAA 4x" : "", reg.rb_depth_clear, pitches.size(), colores,
+                  modo_color);
     }
     return true;
   }
@@ -5169,15 +5200,16 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
       // cleared with vkCmdClearDepthStencilImage. They are cleared by opening a pass with
       // loadOp = CLEAR. The barrier above (UNDEFINED -> GENERAL) stays as it is: it is what makes the
       // driver zero the ZCULL plane, and without it the hardware kills the context.
+      const float inicial = REXCVAR_GET(xdroid360_profundidad_inicial_cero) ? 0.0f : 1.0f;  // XDroid360
       if (!imagen.admite_destino_de_copia && dibujos_) {
-        if (!dibujos_->BorrarProfundidadEnPase(comandos, imagen, 1.0f, 0) &&
+        if (!dibujos_->BorrarProfundidadEnPase(comandos, imagen, inicial, 0) &&
             ++borrados_en_pase_fallidos_ <= 8) {
           REXLOG_WARN("[nativo] C2: NO se pudo preparar la profundidad {}x{} abriendo un pase de "
                       "borrado (fallo {})",
                       imagen.ancho, imagen.alto, borrados_en_pase_fallidos_);
         }
       } else if (borrar_profundidad_) {
-        const VkClearDepthStencilValue lejos{1.0f, 0};
+        const VkClearDepthStencilValue lejos{inicial, 0};
         borrar_profundidad_(comandos, imagen.imagen, VK_IMAGE_LAYOUT_GENERAL, &lejos, 1,
                             &kRangoProfundidad);
       }
@@ -6456,6 +6488,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
   // XDroid360: RecargaEdram and BorradoProfundidadD3d.
   uint64_t recargas_edram_ = 0;
   uint64_t borrados_d3d_ = 0;
+  std::unordered_set<uint64_t> borrados_d3d_vistos_;
   bool recarga_sin_profundidad_avisada_ = false;
   // Rear-view mirror diagnostic (AnotarCopia).
   uint64_t dibujados_ultima_copia_ = 0;
