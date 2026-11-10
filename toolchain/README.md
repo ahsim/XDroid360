@@ -13,6 +13,8 @@ serve is `RECIPE_FORMAT_DRAFT.md` (frozen v2). The P0 measurements are in
 | `out/jniLibs/arm64-v8a/liblld.so` | 57 MB | jniLibs | lld 22.1.8. Call it with `-flavor gnu`, because its argv[0] is `liblld.so` |
 | `out/jniLibs/arm64-v8a/libxenonrecomp.so` | 1.3 MB | jniLibs | the patched XenonRecomp; one binary for both games |
 | `out/jniLibs/arm64-v8a/libstfsextract.so` | 444 KB | jniLibs, **loaded** (`System.loadLibrary("stfsextract")`) | SoD's STFS extraction for `StfsExtractor` (`stfsextract/`) |
+| `out/jniLibs/arm64-v8a/libshaderlib.so` | 256 KB | jniLibs | the native renderer's shader library tool (`shaderlib/`, see below) |
+| `out/jniLibs/arm64-v8a/libdxcompiler.so` | 27.6 MB | jniLibs, loaded by `libshaderlib.so` (RUNPATH `$ORIGIN`) | DXC 1.9.2609, stripped |
 | `out/kit.zip` (`out/kit/`) | 6.8 MB (46 MB unpacked) | asset → `${KIT}` | see below |
 
 The jniLibs must be extracted at install (`useLegacyPackaging = true`, i.e.
@@ -97,6 +99,55 @@ of SoD's packages:
 - a truncated package returns 3 (`extract_failed`), and a non-package returns `null` from
   probe and 3 from extract.
 
+## Shader library (`libshaderlib.so`)
+
+The native renderer (`native-renderer/`) draws with SPIR-V shaders translated ahead of time from
+the game's Xbox 360 shaders, kept in `nfsmw_shaders.nfsp` in the instance's `userdata/`. That
+library is made from the game's files, so it can't ship with the APK: each player's phone builds
+it from their own game. `shaderlib/xdroid360_shaderlib.cpp` does, in one process, what the PC
+did with four tools:
+
+1. read Dragon Age: Origins' `packages/core/data/shaders.erf` (ERF V2.1, zlib entries) and find
+   the Xbox 360 shader containers in it;
+2. translate each one to HLSL with XenosRecomp (`native-renderer/shaders/XenosRecomp`, with
+   `NFSMW_RECOMP`);
+3. compile the HLSL to SPIR-V with DXC, linked in, with the PC's exact `dxc` arguments;
+4. pack them with the renderer's own `EmpaquetarShaders`, load the result back and look every
+   container up in it.
+
+```
+libshaderlib.so <shaders.erf> <out.nfsp> [-j N] [--hlsl <dir>]
+```
+
+| Output line | When |
+|---|---|
+| `containers <n>` | after reading the file |
+| `progress <done>/<total>` | every 10 shaders, and at the end |
+| `left out <name>: <reason>` | for each container XenosRecomp or DXC rejects (the renderer skips their draws) |
+| `shaders: <n> of <m> translated, <k> left out` | at the end |
+| `library <bytes> bytes, <ms> ms, peak memory <KB> KB` | at the end |
+
+Exit code: 0 when the library is written, even with some containers left out; 1 on failure
+(message on stderr); 2 when the input isn't a `shaders.erf`. It writes `<out.nfsp>.tmp` and
+renames it at the end, so a stopped run leaves no half library, and needs no other scratch space.
+
+DXC is pinned to the commit of the `dxc.exe` the PC library was built with, so the result is
+byte-identical. `kit.json` names the tool as `<SHADERLIB_VERSION>-dxc<DXC_VERSION>` (`env.sh`);
+bump `SHADERLIB_VERSION` when the translator, `shader_common.h` or DXC changes the output.
+
+Building DXC needs its own host `llvm-tblgen` and `clang-tblgen` (its LLVM 3.7 fork): see
+`build_dxc_host_tablegen.sh`. On Windows, DXC's support code includes ATL, which DAORecomp's xwin
+sysroot doesn't have; `shaderlib/host_shims/atlbase.h` stands in for the little those two tools
+use. It is never part of what ships.
+
+Checked on the S25 with an instance's own `shaders.erf` (534 KB):
+
+- 458 of 460 shaders translated, the same 2 left out as on the PC: `primitive.vsh` (XenosRecomp:
+  a vertex export with no declared interpolator) and `static2.psh` (DXC: `r254` undeclared);
+- 14,562,532 bytes, sha256 `c3d339fb…`: **byte-identical** to the PC-built library;
+- 11.4 s on all 8 cores, peak memory 164 MB; 13.7 s and 122 MB with `-j 4`;
+- a missing file exits 1, a file that isn't an ERF exits 2.
+
 ## Releases and rebuilding
 
 The releases are built by GitHub Actions (`.github/workflows/build.yml`) on Linux. A tag
@@ -118,6 +169,7 @@ Every source is pinned in `env.sh`:
 | XenonRecomp | commit `ddd128b` |
 | Patch script | the XDroid360 games' one patch script (DAORecomp fork, `scripts/patch_recompiler.py`), commit `86b9d0b` and its sha256 |
 | SDL | commit `829a65d` (3.4.18) |
+| DXC | commit `01b62ad` (v1.9.2609), with its submodules |
 | NDK | 27.3.13750724 |
 
 The kit's `kit.json` names the XenonRecomp version as `ddd128b-p86b9d0b`: its commit and the
@@ -126,9 +178,10 @@ patch script's.
 On any machine:
 
 ```bash
-./fetch_sources.sh        # LLVM into src/, XenonRecomp (patched) and SDL into sources/
+./fetch_sources.sh        # LLVM into src/, XenonRecomp (patched), SDL and DXC into sources/
 ./build_host_tablegen.sh  # host llvm-tblgen + clang-tblgen into build-host/bin (or set HOST_LLVM_BIN)
-HOST_LLVM_BIN=$PWD/build-host/bin ./build_tools.sh   # clang + lld (one to two hours), XenonRecomp, libstfsextract.so -> stage/
+./build_dxc_host_tablegen.sh  # DXC's own host tablegens into build-dxc-host/bin
+HOST_LLVM_BIN=$PWD/build-host/bin ./build_tools.sh   # clang + lld (one to two hours), XenonRecomp, libstfsextract.so, shaderlib + DXC -> stage/
 RELEASE=dev ./package.sh  # stage/ + NDK + SDL3 headers + licenses -> out/
 ```
 
@@ -139,6 +192,8 @@ The paths come from `env.sh`; each can be set in the environment:
 | `ANDROID_NDK_HOME` | `$ANDROID_HOME/ndk/27.3.13750724` (or the usual Windows SDK folder) | NDK 27.3.13750724. The games' prebuilt runtimes must use the same NDK |
 | `XR_SRC`, `SDL_SRC` | `sources/XenonRecomp`, `sources/SDL` when present, else the XDroid360 checkout's | the patched XenonRecomp and SDL |
 | `HOST_LLVM_BIN` | `$DAO_TOOLS/llvm/bin` | host `llvm-tblgen` and `clang-tblgen` 22.1.8 |
+| `DXC_SRC`, `DXC_HOST_BIN` | `sources/DirectXShaderCompiler`, `build-dxc-host/bin` | DXC's sources and its own host tablegens |
+| `DXC_BUILD_DIR`, `DXC_LIB` | `build-dxc-android`, none | where DXC is cross-built; or a `libdxcompiler.so` already built from `DXC_COMMIT` (CI's cache) |
 | `XDROID360_ROOT`, `DAO_TOOLS` | `../../DAO`, `$XDROID360_ROOT/recomp/tools` | the author's PC: an XDroid360 checkout with recomp's installer tools (CMake, Ninja, LLVM) |
 | `CMAKE`, `NINJA` | from `DAO_TOOLS` | e.g. `cmake`, `ninja` from the PATH |
 
@@ -149,6 +204,10 @@ text file and its source. It covers the jniLibs too. Note that **`libxenonrecomp
 GPL-2.0-or-later as a whole**: its PowerPC disassembler (`thirdparty/disasm`) comes from GNU
 binutils. It is a separate program the launcher runs, so the launcher itself isn't affected.
 Its source is XenonRecomp at the recorded commit plus the published patch script.
+**`libshaderlib.so` is GPL-3.0 as a whole**: it links the native renderer's shader library code
+(from nfsmw-android, GPL-3.0); its source is this repository. `libdxcompiler.so` is DXC under
+the University of Illinois/NCSA licence, with SPIRV-Tools (Apache-2.0) and the SPIR-V and
+DirectX headers (MIT-style).
 
 ## Checks done
 
@@ -167,5 +226,7 @@ build of the same source.
 ## Other files here
 
 - `configure_android_llvm.sh`: the LLVM configure, called by `build_tools.sh`.
+- `build_dxc_host_tablegen.sh`: DXC's host tablegens, for `build_tools.sh shaderlib`.
+- `shaderlib/`: the shader library tool's source and CMake project.
 - `phone/p0/`: the P0 adb kit and scripts.
 - `p0test/`: the P0 in-app test APK project.

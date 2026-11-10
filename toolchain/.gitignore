@@ -13,8 +13,10 @@
 !/package.sh
 !/configure_android_llvm.sh
 !/build_host_tablegen.sh
+!/build_dxc_host_tablegen.sh
 !/fetch_sources.sh
 !/licenses/
 !/.github/
 !/stfsextract/
+!/shaderlib/
 !/docs/

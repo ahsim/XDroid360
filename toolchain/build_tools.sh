@@ -6,8 +6,11 @@
 #                serves both games: only the ppc_context.h template differs, and that is
 #                passed on the command line from each game's profile)
 #   libstfsextract.so (stfsextract/: SoD's STFS extraction, a JNI library)
+#   shaderlib, libdxcompiler.so (shaderlib/: the native renderer's shader library tool, with
+#               DXC at DXC_COMMIT; DXC's host tablegens first: build_dxc_host_tablegen.sh;
+#               about 15 min the first time)
 # Paths: env.sh. Then package.sh lays them out for the launcher.
-# Usage: build_tools.sh [llvm|xr|stfs|all]
+# Usage: build_tools.sh [llvm|xr|stfs|shaderlib|all]
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/env.sh"
@@ -47,6 +50,46 @@ if [ "$what" = stfs ] || [ "$what" = all ]; then
     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON -DCMAKE_BUILD_TYPE=Release
   "$NINJA" -C "$HERE/build-stfsextract" stfsextract
   "$STRIP" --strip-unneeded -o "$STAGE/libstfsextract.so" "$HERE/build-stfsextract/libstfsextract.so"
+fi
+
+if [ "$what" = shaderlib ] || [ "$what" = all ]; then
+  # libdxcompiler.so: DXC (its LLVM 3.7 fork) cross-built like clang, run by DXC's own host
+  # tablegens; or DXC_LIB, one already built from DXC_COMMIT (CI's cache). Then the tool,
+  # linked to it (RUNPATH $ORIGIN: both go to nativeLibraryDir).
+  if [ -z "${DXC_LIB:-}" ]; then
+    [ -x "$DXC_HOST_BIN/llvm-tblgen$EXE" ] && [ -x "$DXC_HOST_BIN/clang-tblgen$EXE" ] ||
+      { echo "no DXC tablegens in $DXC_HOST_BIN (run build_dxc_host_tablegen.sh)" >&2; exit 1; }
+    DXC_BUILD=${DXC_BUILD_DIR:-$HERE/build-dxc-android}
+    [ -f "$DXC_BUILD/build.ninja" ] || "$CMAKE" -G Ninja -S "$DXC_SRC" -B "$DXC_BUILD" \
+      -C "$DXC_SRC/cmake/caches/PredefinedParams.cmake" \
+      -DCMAKE_MAKE_PROGRAM="$NINJA" \
+      -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+      -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
+      -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+      -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG -g0" -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG -g0" \
+      -DLLVM_TABLEGEN="$DXC_HOST_BIN/llvm-tblgen$EXE" -DCLANG_TABLEGEN="$DXC_HOST_BIN/clang-tblgen$EXE" \
+      -DLLVM_HOST_TRIPLE=aarch64-linux-android29 \
+      -DHLSL_INCLUDE_TESTS=OFF -DSPIRV_BUILD_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_TESTS=OFF \
+      -DLLVM_INCLUDE_UTILS=OFF -DLLVM_BUILD_UTILS=OFF -DLLVM_APPEND_VC_REV=OFF \
+      -DLLVM_ENABLE_ASSERTIONS=OFF -DLLVM_PARALLEL_LINK_JOBS=1 -DHLSL_BUILD_DXILCONV=OFF
+    "$NINJA" -C "$DXC_BUILD" dxcompiler
+    DXC_LIB=$DXC_BUILD/lib/libdxcompiler.so
+  fi
+  [ -f "$DXC_LIB" ] || { echo "no libdxcompiler.so at $DXC_LIB" >&2; exit 1; }
+  SL_BUILD=$HERE/build-shaderlib
+  [ -f "$SL_BUILD/build.ninja" ] || "$CMAKE" -G Ninja -S "$HERE/shaderlib" -B "$SL_BUILD" \
+    -DCMAKE_MAKE_PROGRAM="$NINJA" \
+    -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DNR_DIR="$XDROID360_ROOT/native-renderer" \
+    -DFMT_DIR="$XR_SRC/thirdparty/fmt" -DXXH_DIR="$XR_SRC/thirdparty/xxHash" \
+    -DDXC_SRC="$DXC_SRC" -DDXC_LIB="$DXC_LIB"
+  "$NINJA" -C "$SL_BUILD" xdroid360_shaderlib
+  "$STRIP" --strip-all -o "$STAGE/shaderlib" "$SL_BUILD/xdroid360_shaderlib"
+  [ "$DXC_LIB" -ef "$STAGE/libdxcompiler.so" ] || "$STRIP" --strip-all -o "$STAGE/libdxcompiler.so" "$DXC_LIB"
 fi
 
 ls -la "$STAGE"

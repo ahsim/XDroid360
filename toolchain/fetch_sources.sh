@@ -4,6 +4,7 @@
 #   sources/XenonRecomp                   XR_COMMIT with its submodules, patched with the XDroid360
 #                                         games' patch script at XR_PATCH_COMMIT (sha256-checked)
 #   sources/SDL                           SDL_COMMIT (headers for the kit)
+#   sources/DirectXShaderCompiler         DXC_COMMIT with its submodules (shaderlib)
 # Usage: fetch_sources.sh
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -48,4 +49,7 @@ echo "$XR_PATCH_SHA256  $script" | sha256sum -c -
 "$PYTHON" -I "$script" "$XR/XenonRecomp/recompiler.cpp"
 
 clone "$SDL_REPO" "$SDL_COMMIT" "$HERE/sources/SDL"
+# DXC for the shader library tool, with its submodules (SPIRV-Tools, SPIRV-Headers,
+# DirectX-Headers). fmt and xxHash come from XenonRecomp's thirdparty (XenosRecomp's commits).
+clone "$DXC_REPO" "$DXC_COMMIT" "$DXC_SRC" --recursive
 echo "sources ready"

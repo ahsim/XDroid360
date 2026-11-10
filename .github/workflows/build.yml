@@ -3,7 +3,8 @@ name: Build XDroid360
 # The player's APK: the launcher with everything it needs to build the games on the phone.
 #   toolchain  the on-phone tools, built here from pinned sources (toolchain/env.sh): clang and
 #              lld 22.1.8 for aarch64-android29 (cached: the first build takes one to two
-#              hours), the patched XenonRecomp, the STFS extractor, and the kit.
+#              hours), the patched XenonRecomp, the STFS extractor, the native renderer's
+#              shader library tool with DXC (cached), and the kit.
 #   apk        DAO's game profile (dao.zip), built here from DAORecomp's runtime (the recomp
 #              fork) and profiles/dao (no game code or data); State of Decay's profile from
 #              SoDRecomp's release, by the asset and SHA-256 pinned in android/toolchain.lock.json;
@@ -80,6 +81,29 @@ jobs:
         run: |
           bash build_tools.sh xr
           bash build_tools.sh stfs
+
+      # The native renderer's shader library tool and DXC (libdxcompiler.so, cached: about 15 min
+      # on a fast PC, longer here).
+      - name: Restore DXC
+        id: dxc
+        uses: actions/cache@v4
+        with:
+          path: toolchain/stage/bin/libdxcompiler.so
+          key: dxc-${{ hashFiles('toolchain/env.sh', 'toolchain/build_dxc_host_tablegen.sh') }}
+
+      - name: Build DXC's host tablegens
+        if: steps.dxc.outputs.cache-hit != 'true'
+        run: DXC_HOST_BUILD_DIR=/mnt/work/build-dxc-host bash build_dxc_host_tablegen.sh
+
+      - name: Build the shader library tool
+        run: |
+          if [ "${{ steps.dxc.outputs.cache-hit }}" = true ]; then
+            DXC_LIB=$PWD/stage/bin/libdxcompiler.so bash build_tools.sh shaderlib
+          else
+            DXC_HOST_BIN=/mnt/work/build-dxc-host/bin DXC_BUILD_DIR=/mnt/work/build-dxc-android \
+              bash build_tools.sh shaderlib
+            rm -rf /mnt/work/build-dxc-android /mnt/work/build-dxc-host
+          fi
 
       # Every library must be 16 KB-aligned: a 16 KB-page kernel refuses the others.
       - name: Package and check alignment
@@ -218,7 +242,8 @@ jobs:
           APK=android/app/build/outputs/apk/launcher/release/xdroid360-launcher-release-${{ steps.app_version.outputs.name }}.apk
           LIST=$(unzip -l "$APK")
           for f in lib/arm64-v8a/libclang.so lib/arm64-v8a/liblld.so lib/arm64-v8a/libxenonrecomp.so \
-                   lib/arm64-v8a/libstfsextract.so lib/arm64-v8a/libSDL3.so assets/kit.zip \
+                   lib/arm64-v8a/libstfsextract.so lib/arm64-v8a/libshaderlib.so \
+                   lib/arm64-v8a/libdxcompiler.so lib/arm64-v8a/libSDL3.so assets/kit.zip \
                    assets/games/dao.zip assets/games/sod.zip; do
             # A here-string, not a pipe: grep -q stops at the first match, and the writer of a
             # pipe would then fail with "Broken pipe" under pipefail.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # P2 item 1: lays out the on-device tools and the game-agnostic toolchain kit for the
 # launcher (recipe format v2, RECIPE_FORMAT_DRAFT.md, "Shipped pieces"):
-#   out/jniLibs/arm64-v8a/libclang.so, liblld.so, libxenonrecomp.so, libstfsextract.so (stage/bin)
+#   out/jniLibs/arm64-v8a/libclang.so, liblld.so, libxenonrecomp.so, libstfsextract.so,
+#                         libshaderlib.so, libdxcompiler.so (stage/bin)
 #   out/kit/   and out/kit.zip  -> the launcher extracts it to ${KIT}
 #   kit/licenses/: the license texts of everything in the jniLibs and the kit (INDEX.md)
 # The launcher's Gradle copies these as they are. Paths: env.sh.
@@ -22,7 +23,8 @@ OUT=$HERE/out
 KIT=$OUT/kit
 TRIPLE=aarch64-linux-android
 
-for f in "$STAGE/clang" "$STAGE/lld" "$STAGE/XenonRecomp" "$STAGE/libstfsextract.so" "$CLANG_HEADERS/arm_neon.h"; do
+for f in "$STAGE/clang" "$STAGE/lld" "$STAGE/XenonRecomp" "$STAGE/libstfsextract.so" \
+         "$STAGE/shaderlib" "$STAGE/libdxcompiler.so" "$CLANG_HEADERS/arm_neon.h"; do
   [ -f "$f" ] || { echo "missing $f: run build_tools.sh" >&2; exit 1; }
 done
 
@@ -44,6 +46,8 @@ cp "$STAGE/clang" "$OUT/jniLibs/arm64-v8a/libclang.so"
 cp "$STAGE/lld" "$OUT/jniLibs/arm64-v8a/liblld.so"
 cp "$STAGE/XenonRecomp" "$OUT/jniLibs/arm64-v8a/libxenonrecomp.so"
 cp "$STAGE/libstfsextract.so" "$OUT/jniLibs/arm64-v8a/libstfsextract.so"
+cp "$STAGE/shaderlib" "$OUT/jniLibs/arm64-v8a/libshaderlib.so"
+cp "$STAGE/libdxcompiler.so" "$OUT/jniLibs/arm64-v8a/libdxcompiler.so"
 
 # The kit: what the phone's compile and link need from the NDK (the same NDK as the
 # games' prebuilt runtimes), clang 22's own headers, and the SDL3 headers.
@@ -66,7 +70,7 @@ cat > "$KIT/kit.json" <<EOF
   "ndk": "27.3.13750724",
   "clang": "22.1.8",
   "sdl3": "$sdl_ver",
-  "tools": { "clang": "22.1.8", "lld": "22.1.8", "xenonrecomp": "$XR_VERSION" }
+  "tools": { "clang": "22.1.8", "lld": "22.1.8", "xenonrecomp": "$XR_VERSION", "shaderlib": "$SHADERLIB_VERSION-dxc$DXC_VERSION" }
 }
 EOF
 
@@ -91,6 +95,13 @@ lic SIMDe.txt "$XR_SRC/thirdparty/simde/COPYING"
 lic tiny-AES-c.txt "$XR_SRC/thirdparty/tiny-AES-c/unlicense.txt"
 sed -n '1,/\*\//p' "$XR_SRC/thirdparty/TinySHA1/TinySHA1.hpp" > "$LIC/TinySHA1.txt"
 lic stfsextract.txt "$HERE/stfsextract/LICENSE"
+lic DXC.txt "$DXC_SRC/LICENSE.TXT"
+lic DXC-ThirdPartyNotices.txt "$DXC_SRC/ThirdPartyNotices.txt"
+lic SPIRV-Tools.txt "$DXC_SRC/external/SPIRV-Tools/LICENSE"
+lic SPIRV-Headers.txt "$DXC_SRC/external/SPIRV-Headers/LICENSE"
+lic DirectX-Headers.txt "$DXC_SRC/external/DirectX-Headers/LICENSE"
+lic XenosRecomp.md "$XDROID360_ROOT/native-renderer/shaders/LICENSE.md"
+lic GPL-3.0.txt "$XDROID360_ROOT/native-renderer/LICENSE"
 cat > "$LIC/INDEX.md" <<EOF
 # Licenses: the on-device tools and the toolchain kit
 
@@ -104,6 +115,10 @@ cat > "$LIC/INDEX.md" <<EOF
 | in XenonRecomp: libmspack (lzxd.c) | libxenonrecomp.so | LGPL-2.1 | LGPL-2.1.txt | https://github.com/kyz/libmspack |
 | in XenonRecomp: fmt, toml++, xxHash, SIMDe, tiny-AES-c, TinySHA1 | libxenonrecomp.so | MIT, MIT, BSD-2-Clause, MIT, Unlicense, ISC-style | fmt.txt, tomlplusplus.txt, xxHash.txt, SIMDe.txt, tiny-AES-c.txt, TinySHA1.txt | XenonRecomp's thirdparty/ |
 | libstfsextract (SoD's STFS reader, a port of SoDRecomp's) | libstfsextract.so | MIT | stfsextract.txt | https://github.com/udarmolota/XDroid360 (toolchain/stfsextract/) |
+| shaderlib $SHADERLIB_VERSION (the native renderer's shader library tool) | libshaderlib.so | **GPL-3.0** as a whole: it links the native renderer's shader library code (nfsmw-android, GPL-3.0); its own file is MIT | GPL-3.0.txt | https://github.com/udarmolota/XDroid360 (toolchain/shaderlib/, native-renderer/) |
+| in shaderlib: XenosRecomp (nfsmw-android's fork), fmt, xxHash | libshaderlib.so | MIT, MIT, BSD-2-Clause | XenosRecomp.md, fmt.txt, xxHash.txt | native-renderer/shaders/XenosRecomp; XenonRecomp's thirdparty/ |
+| DirectXShaderCompiler $DXC_VERSION | libdxcompiler.so | University of Illinois/NCSA (LLVM 3.7), with third-party notices | DXC.txt, DXC-ThirdPartyNotices.txt | https://github.com/microsoft/DirectXShaderCompiler at $DXC_COMMIT |
+| in DXC: SPIRV-Tools, SPIRV-Headers, DirectX-Headers | libdxcompiler.so | Apache-2.0, MIT-style (Khronos), MIT | SPIRV-Tools.txt, SPIRV-Headers.txt, DirectX-Headers.txt | DXC's external/ submodules at $DXC_COMMIT |
 EOF
 
 # kit.zip, for the launcher's assets. Python's zipfile: Git Bash has no zip. (The first Python

@@ -12,6 +12,8 @@
 #   XR_SRC            the patched XenonRecomp checkout
 #   SDL_SRC           SDL 3.4.18 (the launcher's libSDL3.so is built from the same commit)
 #   HOST_LLVM_BIN     host llvm-tblgen and clang-tblgen 22.1.8 (configure_android_llvm.sh)
+#   DXC_SRC           DirectXShaderCompiler at DXC_COMMIT with its submodules (shaderlib)
+#   DXC_HOST_BIN      DXC's own host llvm-tblgen and clang-tblgen (build_dxc_host_tablegen.sh)
 #   CMAKE, NINJA      if not the ones in DAO_TOOLS
 _here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -27,6 +29,14 @@ XR_PATCH_SHA256=f007dcf14c2bc8579bebe404d8d466351e6858f2104cbcb5b5aad6793726d936
 SDL_REPO=https://github.com/libsdl-org/SDL.git
 SDL_COMMIT=829a65d769d935c4852f8159e964312c0957260a
 NDK_VERSION=27.3.13750724
+# DXC for the native renderer's shader library tool (shaderlib): v1.9.2609, the commit of the
+# dxc.exe the PC library was built with, so the phone's library is byte-identical to it.
+DXC_REPO=https://github.com/microsoft/DirectXShaderCompiler.git
+DXC_COMMIT=01b62ad47db7dee3dd33f90e7339cf9e860b3f93
+DXC_VERSION=1.9.2609
+# The shader library tool's version, for the recipes (requires.tools.shaderlib): bump it when
+# the translator, shader_common.h or DXC changes what it produces.
+SHADERLIB_VERSION=1
 
 ANDROID_SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/AppData/Local/Android/Sdk}}
 NDK=${ANDROID_NDK_HOME:-$ANDROID_SDK/ndk/$NDK_VERSION}
@@ -52,6 +62,8 @@ if [ -z "${SDL_SRC:-}" ]; then
   if [ -d "$_here/sources/SDL" ]; then SDL_SRC=$_here/sources/SDL; else SDL_SRC=$XDROID360_ROOT/recomp/thirdparty/SDL; fi
 fi
 HOST_LLVM_BIN=${HOST_LLVM_BIN:-$DAO_TOOLS/llvm/bin}
+DXC_SRC=${DXC_SRC:-$_here/sources/DirectXShaderCompiler}
+DXC_HOST_BIN=${DXC_HOST_BIN:-$_here/build-dxc-host/bin}
 # xenia-canary's third_party (for a game profile's build and licences, not the tools).
 XENIA_CANARY=${XENIA_CANARY:-$DAO_TOOLS/xenia-canary}
 # The XenonRecomp version the recipes pin (requires.tools.xenonrecomp): its commit and the
