@@ -108,6 +108,12 @@ final class RecipeRunner {
             JSONObject step = steps.optJSONObject(i);
             if (!step.optBoolean("keeps_game")) Instance.deleteTree(marker(step));
         }
+        // So do the steps marked "rerun" (the shader library: a new launcher may bring a better
+        // translator).
+        for (int i = 0; i < steps.length(); i++) {
+            JSONObject step = steps.optJSONObject(i);
+            if (step.optBoolean("rerun")) Instance.deleteTree(marker(step));
+        }
         //noinspection ResultOfMethodCallIgnored
         new File(work, "tmp").mkdirs();
         //noinspection ResultOfMethodCallIgnored
@@ -281,7 +287,11 @@ final class RecipeRunner {
             Matcher m = progress.matcher(line);
             if (m.find()) {
                 try {
-                    double pct = Math.min(100, Math.max(0, Double.parseDouble(m.group(1))));
+                    // One group: a percentage; two: done and total ("progress 10/460").
+                    double value = m.groupCount() >= 2
+                            ? 100 * Double.parseDouble(m.group(1)) / Math.max(1, Double.parseDouble(m.group(2)))
+                            : Double.parseDouble(m.group(1));
+                    double pct = Math.min(100, Math.max(0, value));
                     report(weight * pct / 100, String.format(java.util.Locale.ROOT, "%.0f%%", pct));
                 } catch (NumberFormatException ignored) {
                 }

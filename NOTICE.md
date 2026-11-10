@@ -40,6 +40,10 @@ repository at the release's tag, with the submodule commit it names.
 | Android NDK r27d (27.3.13750724): the sysroot's headers, C runtime objects and library stubs | `assets/kit.zip` | Apache-2.0, BSD and others per file (as in the NDK's `NOTICE`); used under the Android Software Development Kit License Agreement |
 | XenonRecomp (hedge-dev), commit `ddd128bc` with this project's patches: `scripts/patch_recompiler.py` at commit `86b9d0b` of github.com/udarmolota/Dragon-Age-Origins-Recomp-Android. A separate program the launcher runs | the APK's `libxenonrecomp.so`; source: github.com/hedge-dev/XenonRecomp at `ddd128bcca99fe8bfbb99bea583c972351fa6ace`, plus that patch script | GPL-2.0-or-later as a whole: its PowerPC disassembler (`thirdparty/disasm`) comes from GNU binutils; XenonRecomp's own code is MIT |
 | SoD's STFS extractor (a port of SoDRecomp's `stfs.cpp`) | the APK's `libstfsextract.so` | MIT (the DAORecomp contributors) |
+| shaderlib: the native renderer's shader library tool, which translates the game's shaders on the phone (its own file `toolchain/shaderlib/` is MIT; it links the native renderer's shader library code) | the APK's `libshaderlib.so` | GPL-3.0 as a whole |
+| in shaderlib: XenosRecomp (nfsmw-android's fork), fmt, xxHash | `native-renderer/shaders/XenosRecomp`; XenonRecomp's `thirdparty/`; the APK's `libshaderlib.so` | MIT, MIT, BSD-2-Clause |
+| DirectXShaderCompiler 1.9.2609 (Microsoft), commit `01b62ad47db7dee3dd33f90e7339cf9e860b3f93`, used by shaderlib | the APK's `libdxcompiler.so`; source: github.com/microsoft/DirectXShaderCompiler at that commit | University of Illinois/NCSA (LLVM 3.7), with its third-party notices |
+| in DXC: SPIRV-Tools, SPIRV-Headers, DirectX-Headers | DXC's `external/` submodules at that commit; the APK's `libdxcompiler.so` | Apache-2.0, MIT-style (Khronos), MIT |
 
 ## The games' runtimes (the game profiles)
 

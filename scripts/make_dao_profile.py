@@ -219,8 +219,9 @@ def recipe(kit, xex_sha256, headers):
         "source": {"formats": ["xiso"], "pick": "file"},
         "requires": {"kit": kit["kit"], "abi": abi_version(),
                      "tools": {"clang": kit["tools"]["clang"], "xenonrecomp": kit["tools"]["xenonrecomp"]}},
-        # Game files: 6.4 GB on the PC; work: 253 MB of generated C++, 378 MB of objects, the PCH.
-        "space": {"game_mb": 6800, "work_mb": 1000, "install_mb": 300},
+        # Game files: 6.4 GB on the PC, plus the native renderer's shader library (14.6 MB);
+        # work: 253 MB of generated C++, 378 MB of objects (kept for "Update game"), the PCH.
+        "space": {"game_mb": 6815, "work_mb": 1000, "install_mb": 300},
         "inputs": {"xex": {"path": "${GAME}/game/default.xex", "sha256": [xex_sha256]}},
         "vars": {"CXXFLAGS": cxx, "PPCFLAGS": ppcflags, "PCH": pch},
         "jobs": {"max_rss_mb": 400, "reserve_mb": 768},
@@ -230,6 +231,14 @@ def recipe(kit, xex_sha256, headers):
             {"id": "check-xex", "kind": "verify", "label": "Checking game version", "weight": 1,
              "files": {"${GAME}/game/default.xex": [xex_sha256]},
              "message": "unsupported_game_version"},
+            # The native renderer's shader library from the game's own shaders (libshaderlib.so,
+            # XenosRecomp and DXC: about 11 s on an S25). Again on every "Update game": a new
+            # launcher may translate them better.
+            {"id": "shaders", "kind": "run", "label": "Translating shaders", "weight": 2,
+             "tool": "shaderlib", "rerun": True, "creates": ["${GAME}/userdata"],
+             "args": ["${GAME}/game/packages/core/data/shaders.erf", "${GAME}/userdata/nfsmw_shaders.nfsp",
+                      "-j", "${JOBS}"],
+             "progress": "progress ([0-9]+)/([0-9]+)"},
             {"id": "xr-config", "kind": "write", "weight": 0, "creates": ["${WORK}/xr"],
              "path": "${WORK}/xr/DAO.toml", "from": "${PROFILE}/xr/DAO.toml.in"},
             {"id": "recomp", "kind": "run", "label": "Translating game code", "weight": 10,
