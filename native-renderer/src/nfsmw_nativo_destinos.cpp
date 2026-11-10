@@ -653,8 +653,12 @@ REXCVAR_DEFINE_INT32(nfsmw_nativo_ranuras_trabajo, 3, "NFSMW",
  * ruled out: the change of tone was the environment cubemap with caras_max=1 refreshing one face every six
  * frames, so the car's lighting lagged and then jumped. ZCULL is worth -2.12 ms measured and was already
  * enabled by hand in the test toml; the default value was misleading.
+ *
+ * XDroid360: off by default for Dragon Age. Its depth images must keep TRANSFER_DST: the D3D depth
+ * clears (BorradoProfundidadD3d) and the xenonreload depth copies (RecargaEdram) write them with
+ * transfers. With ZCULL on, fire and lit objects showed through walls.
  */
-REXCVAR_DEFINE_BOOL(nfsmw_nativo_zcull, true, "NFSMW",
+REXCVAR_DEFINE_BOOL(nfsmw_nativo_zcull, false, "NFSMW",
                     "Descarte jerarquico de profundidad (ZCULL): quita TRANSFER_DST a las "
                     "profundidades del juego para que el driver les de plano de ZCULL");
 
