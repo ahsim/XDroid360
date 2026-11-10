@@ -25,7 +25,8 @@ namespace {
 // submission whose slot is still in flight isn't timed.
 constexpr uint32_t kSlots = 8;
 // Per submission: its begin and end, then a begin/end pair per group.
-constexpr uint32_t kQueriesPerSlot = 256;
+// (SoD: about 120 groups a frame - resolves, transfers, texture loads.)
+constexpr uint32_t kQueriesPerSlot = 1024;
 constexpr uint32_t kGroupPairsPerSlot = (kQueriesPerSlot - 2) / 2;
 constexpr uint32_t kGroupCount = 4;  // dao_stats::Activity.
 
