@@ -191,7 +191,7 @@ public class InstanceActivity extends AppCompatActivity {
             text.setSpan(new android.text.style.RelativeSizeSpan(0.75f), start, end, 0);
             ((TextView) findViewById(R.id.renderer_native)).setText(text);
             android.widget.RadioGroup renderer = findViewById(R.id.renderer);
-            renderer.check(Instance.RENDERER_NATIVE.equals(instance.renderer) ? R.id.renderer_native : R.id.renderer_xenia);
+            renderer.check(Instance.RENDERER_NATIVE.equals(instance.rendererToUse()) ? R.id.renderer_native : R.id.renderer_xenia);
             renderer.setOnCheckedChangeListener((g, checked) -> {
                 instance.renderer = checked == R.id.renderer_native ? Instance.RENDERER_NATIVE : Instance.RENDERER_XENIA;
                 save();

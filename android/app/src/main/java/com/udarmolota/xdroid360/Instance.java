@@ -57,7 +57,14 @@ final class Instance {
     boolean presetWritten = false;
     /** The renderer (config.toml [xenia] dao_gpu_renderer): Xenia's emulation, or the native one. */
     static final String RENDERER_XENIA = "xenia", RENDERER_NATIVE = "native";
-    String renderer = RENDERER_XENIA;
+    /** The player's choice, "" for the game's default (rendererToUse). */
+    String renderer = "";
+
+    /** The renderer to start with: the chosen one, else native for Dragon Age: Origins, else Xenia. */
+    String rendererToUse() {
+        if (RENDERER_NATIVE.equals(renderer) || RENDERER_XENIA.equals(renderer)) return renderer;
+        return DAO_TITLE_ID.equals(titleId()) ? RENDERER_NATIVE : RENDERER_XENIA;
+    }
 
     private Instance(String id, File root, File library) {
         this.id = id;
@@ -189,7 +196,7 @@ final class Instance {
                 frameRate = s.optInt("frame_rate", frameRate);
                 preset = s.optString("preset", preset);
                 presetWritten = s.optBoolean("preset_written", presetWritten);
-                renderer = RENDERER_NATIVE.equals(s.optString("renderer")) ? RENDERER_NATIVE : RENDERER_XENIA;
+                renderer = s.optString("renderer", renderer);
             }
         } catch (IOException | JSONException e) {
             android.util.Log.w("XDroid360", "instance.json of " + id + ": " + e);

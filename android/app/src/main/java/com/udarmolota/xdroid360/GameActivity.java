@@ -331,7 +331,7 @@ public class GameActivity extends SDLActivity {
             XeniaConfig.set(config, "dao_present_prerotate", "true");
             // The renderer the settings chose (Dragon Age: Origins has the native one).
             if (Instance.DAO_TITLE_ID.equals(current.titleId())) {
-                XeniaConfig.set(config, "dao_gpu_renderer", "\"" + current.renderer + "\"");
+                XeniaConfig.set(config, "dao_gpu_renderer", "\"" + current.rendererToUse() + "\"");
             }
             org.json.JSONObject frameRate = current.option("frame_rate");
             String[] key = frameRate != null ? frameRate.optString("config").split("\\.", 2) : new String[0];

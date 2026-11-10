@@ -48,7 +48,7 @@
     </string-array>
     <string name="setting_diagnostics">Диагностика для отчёта об ошибке</string>
     <string name="setting_diagnostics_help">Пишет замеры GPU в лог игры (немного медленнее). Включите, поиграйте там, где плохо, и отправьте отчёт об ошибке.</string>
-    <string name="setting_lod">Сжатие текстур</string>
+    <string name="setting_lod">Качество текстур</string>
     <string-array name="lod">
         <item>Полная (самая чёткая)</item>
         <item>Половина (по умолчанию, быстрее)</item>

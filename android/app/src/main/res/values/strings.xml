@@ -50,7 +50,7 @@
     </string-array>
     <string name="setting_diagnostics">Diagnostics for bug reports</string>
     <string name="setting_diagnostics_help">Writes the GPU\'s measurements into the game\'s log (a little slower). Turn it on, play the part that misbehaves, then Report a bug.</string>
-    <string name="setting_lod">Texture compression</string>
+    <string name="setting_lod">Texture quality</string>
     <string-array name="lod">
         <item>Full (sharpest)</item>
         <item>Half (default, faster)</item>
