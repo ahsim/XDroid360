@@ -55,6 +55,9 @@ final class Instance {
     String preset = "";
     /** Whether the launcher wrote the preset's target file (so going back to "" removes it). */
     boolean presetWritten = false;
+    /** The renderer (config.toml [xenia] dao_gpu_renderer): Xenia's emulation, or the native one. */
+    static final String RENDERER_XENIA = "xenia", RENDERER_NATIVE = "native";
+    String renderer = RENDERER_XENIA;
 
     private Instance(String id, File root, File library) {
         this.id = id;
@@ -148,6 +151,7 @@ final class Instance {
             s.put("frame_rate", frameRate);
             s.put("preset", preset);
             s.put("preset_written", presetWritten);
+            s.put("renderer", renderer);
             o.put("settings", s);
         } catch (JSONException e) {
             throw new IOException(e);
@@ -185,6 +189,7 @@ final class Instance {
                 frameRate = s.optInt("frame_rate", frameRate);
                 preset = s.optString("preset", preset);
                 presetWritten = s.optBoolean("preset_written", presetWritten);
+                renderer = RENDERER_NATIVE.equals(s.optString("renderer")) ? RENDERER_NATIVE : RENDERER_XENIA;
             }
         } catch (IOException | JSONException e) {
             android.util.Log.w("XDroid360", "instance.json of " + id + ": " + e);

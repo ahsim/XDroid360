@@ -329,6 +329,10 @@ public class GameActivity extends SDLActivity {
             XeniaConfig.set(config, "game", "language", "\"" + current.languageToUse() + "\"");
             // Always: it saves GPU work, and the plain scaling it uses looks the same on a phone.
             XeniaConfig.set(config, "dao_present_prerotate", "true");
+            // The renderer the settings chose (Dragon Age: Origins has the native one).
+            if (Instance.DAO_TITLE_ID.equals(current.titleId())) {
+                XeniaConfig.set(config, "dao_gpu_renderer", "\"" + current.renderer + "\"");
+            }
             org.json.JSONObject frameRate = current.option("frame_rate");
             String[] key = frameRate != null ? frameRate.optString("config").split("\\.", 2) : new String[0];
             if (key.length == 2 && current.frameRateToUse() > 0) {

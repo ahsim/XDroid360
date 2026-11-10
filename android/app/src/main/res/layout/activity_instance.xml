@@ -84,17 +84,98 @@
                         android:layout_height="wrap_content"
                         android:text="@string/setting_driver" />
 
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/setting_driver_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+
                     <Spinner
                         android:id="@+id/driver"
                         android:layout_width="match_parent"
                         android:layout_height="48dp" />
 
+                    <!-- Only with "Custom driver" chosen. -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/driver_pick"
                         style="@style/Widget.Material3.Button.TextButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/setting_driver_pick" />
+                        android:text="@string/setting_driver_pick"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Renderer: Xenia's emulation or the native renderer (games that have one). -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/renderer_card"
+                style="@style/DaoCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+
+                <LinearLayout
+                    style="@style/DaoCardContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        style="@style/DaoCardTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/setting_renderer" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/renderer_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                    <RadioGroup
+                        android:id="@+id/renderer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/renderer_xenia"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/renderer_xenia" />
+
+                        <!-- Its text gets a green "NEW" tag (InstanceActivity). -->
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/renderer_native"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/renderer_native" />
+                    </RadioGroup>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- The game's language. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/language_card"
+                style="@style/DaoCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+
+                <LinearLayout
+                    style="@style/DaoCardContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        style="@style/DaoCardTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/setting_language" />
+
+                    <!-- Its buttons are made from Instance.LANGUAGES. -->
+                    <RadioGroup
+                        android:id="@+id/language"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -142,21 +223,6 @@
 
                     <Spinner
                         android:id="@+id/frame_rate"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/language_label"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/setting_language"
-                        android:textAppearance="?attr/textAppearanceTitleSmall"
-                        android:visibility="gone" />
-
-                    <Spinner
-                        android:id="@+id/language"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:visibility="gone" />

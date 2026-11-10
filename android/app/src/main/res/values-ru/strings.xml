@@ -16,10 +16,11 @@
 
     <string name="setting_driver">Драйвер Vulkan</string>
     <string name="setting_driver_pick">Выбрать файл драйвера (.so или .zip)…</string>
+    <string name="setting_driver_hint">Автоматически: встроенный Turnip на Adreno 8xx, системный драйвер на любой другой видеокарте. Встроенный Turnip: всегда (для Adreno 8xx). Системный драйвер: родной драйвер телефона. Свой драйвер: файл драйвера, который вы выберете.</string>
     <string-array name="drivers">
-        <item>Автоматически (Turnip на Adreno 8xx, иначе драйвер телефона)</item>
-        <item>Встроенный Turnip (Adreno 8xx)</item>
-        <item>Родной драйвер телефона</item>
+        <item>Автоматически</item>
+        <item>Встроенный Turnip</item>
+        <item>Системный драйвер</item>
         <item>Свой драйвер</item>
     </string-array>
     <string name="setting_sysmem">Режим отрисовки Turnip (TU_DEBUG=sysmem)</string>
@@ -28,12 +29,17 @@
         <item>Включён</item>
         <item>Выключен</item>
     </string-array>
-    <string name="setting_hud">Отображение в игре</string>
+    <string name="setting_hud">Инфо-панель</string>
     <string name="setting_hud_off">Выкл</string>
     <string name="setting_hud_fps">Только FPS</string>
     <string name="setting_hud_full">Полная информация</string>
     <string name="setting_hud_hint">Полная информация — полоска вверху: загрузка GPU и CPU, память, потребление, температура и график FPS. Видно, что тормозит игру.</string>
     <string name="setting_language">Язык игры</string>
+    <string name="setting_renderer">Рендерер</string>
+    <string name="renderer_xenia">Xenia</string>
+    <string name="renderer_native">Native</string>
+    <string name="renderer_new">НОВЫЙ</string>
+    <string name="renderer_hint">Xenia эмулирует графический чип Xbox 360: самый проверенный путь. Native рисует сцены игры прямо через Vulkan, без этой эмуляции; он новый, поэтому если что-то выглядит не так, вернитесь на Xenia и отправьте отчёт об ошибке. Действует со следующего запуска игры.</string>
     <string name="language_auto">Язык телефона</string>
     <string-array name="languages">
         <item>English</item>
@@ -42,7 +48,7 @@
     </string-array>
     <string name="setting_diagnostics">Диагностика для отчёта об ошибке</string>
     <string name="setting_diagnostics_help">Пишет замеры GPU в лог игры (немного медленнее). Включите, поиграйте там, где плохо, и отправьте отчёт об ошибке.</string>
-    <string name="setting_lod">Текстуры</string>
+    <string name="setting_lod">Сжатие текстур</string>
     <string-array name="lod">
         <item>Полная (самая чёткая)</item>
         <item>Половина (по умолчанию, быстрее)</item>

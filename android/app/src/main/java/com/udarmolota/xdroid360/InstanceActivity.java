@@ -68,8 +68,14 @@ public class InstanceActivity extends AppCompatActivity {
         ((TextView) findViewById(R.id.details)).setText(d);
 
         driver = findViewById(R.id.driver);
-        bindSpinner(driver, R.array.drivers, indexOf(DRIVERS, instance.driver), i -> instance.driver = DRIVERS[i]);
-        findViewById(R.id.driver_pick).setOnClickListener(v -> pickDriver.launch(new String[] { "*/*" }));
+        View driverPick = findViewById(R.id.driver_pick);
+        driverPick.setVisibility(Instance.DRIVER_CUSTOM.equals(instance.driver) ? View.VISIBLE : View.GONE);
+        bindSpinner(driver, R.array.drivers, indexOf(DRIVERS, instance.driver), i -> {
+            instance.driver = DRIVERS[i];
+            // The file to pick only matters for a custom driver.
+            driverPick.setVisibility(Instance.DRIVER_CUSTOM.equals(instance.driver) ? View.VISIBLE : View.GONE);
+        });
+        driverPick.setOnClickListener(v -> pickDriver.launch(new String[] { "*/*" }));
         bindSpinner(findViewById(R.id.sysmem), R.array.sysmem, indexOf(SYSMEM, instance.sysmem), i -> instance.sysmem = SYSMEM[i]);
         bindOptions();
         android.widget.RadioGroup lod = findViewById(R.id.lod);
@@ -158,7 +164,7 @@ public class InstanceActivity extends AppCompatActivity {
             int at = Math.max(0, ids.indexOf(instance.preset));
             showSpinner(R.id.preset_label, R.id.preset, labels, at, i -> instance.preset = ids.get(i));
         }
-        // The game's language: the phone's by default.
+        // The game's language, its own card: the phone's by default.
         java.util.List<String> languageIds = new java.util.ArrayList<>();
         java.util.List<CharSequence> languageLabels = new java.util.ArrayList<>();
         languageIds.add("");
@@ -168,8 +174,29 @@ public class InstanceActivity extends AppCompatActivity {
             languageIds.add(Instance.LANGUAGES[l]);
             languageLabels.add(names[l]);
         }
-        showSpinner(R.id.language_label, R.id.language, languageLabels, Math.max(0, languageIds.indexOf(instance.language)),
+        findViewById(R.id.language_card).setVisibility(View.VISIBLE);
+        bindRadios(findViewById(R.id.language), languageLabels, Math.max(0, languageIds.indexOf(instance.language)),
                 i -> instance.language = languageIds.get(i));
+        // The renderer, for the games that have the native one (Dragon Age: Origins).
+        if (Instance.DAO_TITLE_ID.equals(instance.titleId())) {
+            findViewById(R.id.renderer_card).setVisibility(View.VISIBLE);
+            // "Native" with a small green "NEW" tag after it.
+            String label = getString(R.string.renderer_native);
+            String tag = " " + getString(R.string.renderer_new) + " ";
+            android.text.SpannableStringBuilder text = new android.text.SpannableStringBuilder(label + "  " + tag);
+            int start = label.length() + 2, end = text.length();
+            text.setSpan(new android.text.style.BackgroundColorSpan(0xFF2E7D32), start, end, 0);
+            text.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFFFFF), start, end, 0);
+            text.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, 0);
+            text.setSpan(new android.text.style.RelativeSizeSpan(0.75f), start, end, 0);
+            ((TextView) findViewById(R.id.renderer_native)).setText(text);
+            android.widget.RadioGroup renderer = findViewById(R.id.renderer);
+            renderer.check(Instance.RENDERER_NATIVE.equals(instance.renderer) ? R.id.renderer_native : R.id.renderer_xenia);
+            renderer.setOnCheckedChangeListener((g, checked) -> {
+                instance.renderer = checked == R.id.renderer_native ? Instance.RENDERER_NATIVE : Instance.RENDERER_XENIA;
+                save();
+            });
+        }
         org.json.JSONObject frameRate = instance.option("frame_rate");
         org.json.JSONArray choices = frameRate != null ? frameRate.optJSONArray("choices") : null;
         if (choices != null && choices.length() > 0) {
@@ -205,6 +232,30 @@ public class InstanceActivity extends AppCompatActivity {
     }
 
     private interface OnPick { void picked(int index); }
+
+    /** A radio button per label in group, the selected one checked; a pick saves at once. */
+    private void bindRadios(android.widget.RadioGroup group, java.util.List<CharSequence> labels, int selected, OnPick onPick) {
+        group.removeAllViews();
+        int[] ids = new int[labels.size()];
+        for (int i = 0; i < labels.size(); i++) {
+            com.google.android.material.radiobutton.MaterialRadioButton b =
+                    new com.google.android.material.radiobutton.MaterialRadioButton(this);
+            ids[i] = View.generateViewId();
+            b.setId(ids[i]);
+            b.setText(labels.get(i));
+            group.addView(b, new android.widget.RadioGroup.LayoutParams(
+                    android.widget.RadioGroup.LayoutParams.MATCH_PARENT, android.widget.RadioGroup.LayoutParams.WRAP_CONTENT));
+        }
+        group.check(ids[Math.max(0, Math.min(ids.length - 1, selected))]);
+        group.setOnCheckedChangeListener((g, checked) -> {
+            for (int i = 0; i < ids.length; i++) {
+                if (ids[i] == checked) {
+                    onPick.picked(i);
+                    save();
+                }
+            }
+        });
+    }
 
     private void bindSpinner(Spinner spinner, int array, int selected, OnPick onPick) {
         ArrayAdapter<CharSequence> a = ArrayAdapter.createFromResource(this, array, android.R.layout.simple_spinner_item);

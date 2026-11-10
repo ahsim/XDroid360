@@ -18,10 +18,11 @@
 
     <string name="setting_driver">Vulkan driver</string>
     <string name="setting_driver_pick">Choose a driver file (.so or .zip)…</string>
+    <string name="setting_driver_hint">Automatic: the built-in Turnip on an Adreno 8xx, the system driver on any other GPU. Built-in Turnip: always (for an Adreno 8xx). System driver: the phone\'s own. Custom driver: a driver file you choose.</string>
     <string-array name="drivers">
-        <item>Automatic (Turnip on Adreno 8xx, else the phone\'s own)</item>
-        <item>Built-in Turnip (Adreno 8xx)</item>
-        <item>The phone\'s own driver</item>
+        <item>Automatic</item>
+        <item>Built-in Turnip</item>
+        <item>System driver</item>
         <item>Custom driver</item>
     </string-array>
     <string name="setting_sysmem">Turnip rendering mode (TU_DEBUG=sysmem)</string>
@@ -30,12 +31,17 @@
         <item>On</item>
         <item>Off</item>
     </string-array>
-    <string name="setting_hud">In-game display</string>
+    <string name="setting_hud">Info panel</string>
     <string name="setting_hud_off">Off</string>
     <string name="setting_hud_fps">Only FPS</string>
     <string name="setting_hud_full">Full info</string>
     <string name="setting_hud_hint">Full info shows a bar at the top: GPU and CPU load, memory, power draw, temperature and an FPS graph. Handy to see what slows the game down.</string>
     <string name="setting_language">Game language</string>
+    <string name="setting_renderer">Renderer</string>
+    <string name="renderer_xenia">Xenia</string>
+    <string name="renderer_native">Native</string>
+    <string name="renderer_new">NEW</string>
+    <string name="renderer_hint">Xenia emulates the Xbox 360\'s graphics chip: the most tested way. Native draws the game\'s scenes with Vulkan directly, without that emulation; it is new, so if something looks wrong, switch back to Xenia and send a bug report. Takes effect the next time the game starts.</string>
     <string name="language_auto">The phone\'s language</string>
     <string-array name="languages">
         <item>English</item>
@@ -44,7 +50,7 @@
     </string-array>
     <string name="setting_diagnostics">Diagnostics for bug reports</string>
     <string name="setting_diagnostics_help">Writes the GPU\'s measurements into the game\'s log (a little slower). Turn it on, play the part that misbehaves, then Report a bug.</string>
-    <string name="setting_lod">Textures</string>
+    <string name="setting_lod">Texture compression</string>
     <string-array name="lod">
         <item>Full (sharpest)</item>
         <item>Half (default, faster)</item>
@@ -61,7 +67,7 @@
     <string name="nav_pad_editor">On-screen gamepad layout</string>
     <string name="nav_about">About</string>
     <string name="about_licenses">Licences</string>
-    <string name="about_licenses_text" translatable="false">XDroid360 is MIT-licensed, except its native renderer, which is GPL-3.0. Dragon Age: Origins\' game library links it, so that library and this app are GPL-3.0 as a whole (source: github.com/udarmolota/XDroid360 at the release\'s tag). It carries:\n\n• The native renderer: nfsmw-android by codepdbh, after nfsmw-nx (StevensND), NFSMW-Recompiled (madelrandel-blip) and NFSMW-Recompiled-Mobile (victorgbd) (GPL-3.0); ReXGlue SDK (BSD 3-Clause)\n• SDL 3 (zlib)\n• Mesa Turnip, StevenMXZ\'s Gen8 build (MIT)\n• liblinkernsbypass (BSD 2-Clause)\n• AndroidX, Material Components, Material icons (Apache-2.0)\n• LLVM clang, lld, libc++, libunwind, compiler-rt (Apache-2.0 with LLVM exception)\n• Android NDK sysroot (Apache-2.0, BSD; Android SDK License Agreement)\n• XenonRecomp, the recompiler the launcher runs (GPL-2.0+ as a whole, for its binutils disassembler; source: github.com/hedge-dev/XenonRecomp at ddd128bc plus scripts/patch_recompiler.py at 86b9d0b of github.com/udarmolota/Dragon-Age-Origins-Recomp-Android)\n• XenonUtils (MIT)\n• DAORecomp by 96dot, SoDRecomp (MIT)\n• Xenia (BSD 3-Clause)\n• Vulkan-Headers, VulkanMemoryAllocator, glslang, fmt, xxHash, Snappy, Dear ImGui, toml++, SIMDe, FidelityFX (Apache-2.0, MIT, BSD)\n• FFmpeg 8.0, has207/FFmpeg (LGPL 2.1+; source: github.com/has207/FFmpeg)\n• libmspack (LGPL 2.1), tiny-AES-c (Unlicense), TinySHA1\n\nThe full texts are in the licenses/ folders of the kit and the game profiles inside the APK, and in NOTICE.md at github.com/udarmolota/XDroid360.</string>
+    <string name="about_licenses_text" translatable="false">XDroid360 is MIT-licensed, except its native renderer, which is GPL-3.0. Dragon Age: Origins\' game library links it, so that library and this app are GPL-3.0 as a whole (source: github.com/udarmolota/XDroid360 at the release\'s tag). It carries:\n\n• The native renderer: nfsmw-android by codepdbh, after nfsmw-nx (StevensND), NFSMW-Recompiled (madelrandel-blip) and NFSMW-Recompiled-Mobile (victorgbd) (GPL-3.0); ReXGlue SDK (BSD 3-Clause)\n• SDL 3 (zlib)\n• Mesa Turnip, StevenMXZ\'s Gen8 build (MIT)\n• liblinkernsbypass (BSD 2-Clause)\n• AndroidX, Material Components, Material icons (Apache-2.0)\n• LLVM clang, lld, libc++, libunwind, compiler-rt (Apache-2.0 with LLVM exception)\n• Android NDK sysroot (Apache-2.0, BSD; Android SDK License Agreement)\n• XenonRecomp, the recompiler the launcher runs (GPL-2.0+ as a whole, for its binutils disassembler; source: github.com/hedge-dev/XenonRecomp at ddd128bc plus scripts/patch_recompiler.py at 86b9d0b of github.com/udarmolota/Dragon-Age-Origins-Recomp-Android)\n• shaderlib, the shader translator the launcher runs (GPL-3.0 as a whole), with XenosRecomp, fmt, xxHash (MIT, BSD)\n• DirectXShaderCompiler (University of Illinois/NCSA), with SPIRV-Tools, SPIRV-Headers, DirectX-Headers (Apache-2.0, MIT)\n• XenonUtils (MIT)\n• DAORecomp by 96dot, SoDRecomp (MIT)\n• Xenia (BSD 3-Clause)\n• Vulkan-Headers, VulkanMemoryAllocator, glslang, fmt, xxHash, Snappy, Dear ImGui, toml++, SIMDe, FidelityFX (Apache-2.0, MIT, BSD)\n• FFmpeg 8.0, has207/FFmpeg (LGPL 2.1+; source: github.com/has207/FFmpeg)\n• libmspack (LGPL 2.1), tiny-AES-c (Unlicense), TinySHA1\n\nThe full texts are in the licenses/ folders of the kit and the game profiles inside the APK, and in NOTICE.md at github.com/udarmolota/XDroid360.</string>
     <string name="about_text">XDroid360: Xbox 360 games on Android, built on DAORecomp by 96dot, Xenia\'s Vulkan backend and Mesa\'s Turnip. Made with the help of AI.\n\nNo game code or data comes with this app: the phone builds each game from the player\'s own disc.\n\nDragon Age is a trademark of Electronic Arts; this project is not affiliated with EA or BioWare.</string>
     <string name="instance_more">More</string>
     <string name="instance_delete_go">Delete</string>
