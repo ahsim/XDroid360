@@ -1,10 +1,24 @@
 # Third-party components
 
-This repository's own files are MIT-licensed (`LICENSE`). The launcher APK, and the game
-profiles and toolchain it carries, include code from the following projects, each under its
-own license. The full texts are in the `licenses/` folder of each piece the APK carries
-(`assets/kit.zip`, `assets/games/dao.zip`, `assets/games/sod.zip`); the launcher's About screen
-lists them too.
+This repository's own files are MIT-licensed (`LICENSE`), except `native-renderer/`, which is
+GPL-3.0 (`native-renderer/LICENSE`). The launcher APK, and the game profiles and toolchain it
+carries, include code from the following projects, each under its own license. The full texts
+are in the `licenses/` folder of each piece the APK carries (`assets/kit.zip`,
+`assets/games/dao.zip`, `assets/games/sod.zip`); the launcher's About screen lists them too.
+
+**GPL-3.0 as a whole.** Dragon Age: Origins' game profile links the native renderer (GPL-3.0)
+into the game library the phone builds, so that game library, and the APK that carries the
+profile, are distributed under GPL-3.0 as a whole. The MIT, BSD and other permissive parts keep
+their own licences, which GPL-3.0 allows. The corresponding source of each release is this
+repository at the release's tag, with the submodule commit it names.
+
+## The native renderer
+
+| Component | Where | License |
+|---|---|---|
+| nfsmw-android's EDRAM-free Vulkan renderer and its ahead-of-time shader tools (codepdbh), imported at `71b4c8056481fb8652eb0e7433017644e5df54f5` and changed for Dragon Age: Origins. Credit chain: nfsmw-nx (StevensND) → NFSMW-Recompiled (madelrandel-blip) → NFSMW-Recompiled-Mobile (victorgbd) → nfsmw-android (codepdbh) | `native-renderer/` (`src/`, `shaders/`, `NOTICE.md`); `dao.zip` (`lib/libdao-deps.a`). Off unless the game's `config.toml` sets `dao_gpu_renderer = "native"` | GPL-3.0 |
+| ReXGlue SDK (the renderer's host layer) | `native-renderer/` | BSD 3-Clause |
+| XenosRecomp (hedge-dev), the base of the renderer's shader translator (a PC tool; nothing of it is linked into the game) | `native-renderer/shaders/` | MIT |
 
 ## The launcher
 

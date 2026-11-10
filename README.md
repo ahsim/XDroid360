@@ -136,11 +136,15 @@ add a short description of what happened, and send. The logs are attached for yo
   and [ValDroid](https://github.com/udarmolota/ValDroid): the launchers XDroid360 grew out of
 
 All components and their licences: [NOTICE.md](NOTICE.md). XDroid360's own code is MIT (`LICENSE`).
+The native renderer in [`native-renderer/`](native-renderer) is GPL-3.0: it comes from
+[nfsmw-android](https://github.com/codepdbh/nfsmw-android) by codepdbh (after nfsmw-nx by
+StevensND, NFSMW-Recompiled by madelrandel-blip and NFSMW-Recompiled-Mobile by victorgbd). Dragon
+Age: Origins' game library links it, so that library and the APK are GPL-3.0 as a whole.
 
 ### Source code
 
-Everything in the APK is built from public sources: this repository (the launcher, and the
-on-phone toolchain in [`toolchain/`](toolchain)), the
+Everything in the APK is built from public sources: this repository at the release's tag (the
+launcher, the native renderer, and the on-phone toolchain in [`toolchain/`](toolchain)), the
 [DAORecomp fork](https://github.com/udarmolota/Dragon-Age-Origins-Recomp-Android) and
 [SoDRecomp](https://github.com/udarmolota/SoDRecomp). The recompiler the launcher runs,
 `libxenonrecomp.so`, is GPL-2.0-or-later as a whole (its disassembler comes from GNU binutils);
