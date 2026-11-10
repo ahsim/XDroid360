@@ -3,6 +3,7 @@
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 
 #include <cstring>
+#include <vector>
 
 #include "xenia/base/logging.h"
 #include "xenia/gpu/vulkan/dao_vulkan_stats.h"
@@ -111,6 +112,64 @@ std::string VulkanCommandProcessor::DaoDescribeDevice() const {
     return (format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
   };
   auto yes = [](bool b) { return b ? "yes" : "no"; };
+  // What a native (EDRAM-free) renderer needs: descriptor indexing with
+  // update-after-bind sampled image arrays (VK_EXT_descriptor_indexing or
+  // Vulkan 1.2), and the descriptor set count.
+  bool indexing_extension = false;
+  {
+    uint32_t extension_count = 0;
+    ifn.vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                             &extension_count, nullptr);
+    std::vector<VkExtensionProperties> extensions(extension_count);
+    if (extension_count &&
+        ifn.vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                                 &extension_count,
+                                                 extensions.data()) ==
+            VK_SUCCESS) {
+      for (const VkExtensionProperties& extension : extensions) {
+        if (!std::strcmp(extension.extensionName,
+                         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) {
+          indexing_extension = true;
+        }
+      }
+    }
+  }
+  const bool indexing_core = VK_API_VERSION_MINOR(p.apiVersion) >= 2;
+  VkPhysicalDeviceDescriptorIndexingFeatures indexing = {};
+  indexing.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+  VkPhysicalDeviceDescriptorIndexingProperties indexing_limits = {};
+  indexing_limits.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
+  VkPhysicalDeviceFeatures2 features_2 = {};
+  features_2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  VkPhysicalDeviceProperties2 limits_2 = {};
+  limits_2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+  if ((indexing_extension || indexing_core) &&
+      ifn.vkGetPhysicalDeviceFeatures2 && ifn.vkGetPhysicalDeviceProperties2) {
+    features_2.pNext = &indexing;
+    ifn.vkGetPhysicalDeviceFeatures2(physical_device, &features_2);
+    limits_2.pNext = &indexing_limits;
+    ifn.vkGetPhysicalDeviceProperties2(physical_device, &limits_2);
+  } else {
+    ifn.vkGetPhysicalDeviceFeatures(physical_device, &features_2.features);
+    ifn.vkGetPhysicalDeviceProperties(physical_device, &limits_2.properties);
+  }
+  const std::string native_renderer = fmt::format(
+      "; native renderer: descriptor indexing {}, runtimeDescriptorArray {}, "
+      "shaderSampledImageArrayDynamicIndexing {}, "
+      "descriptorBindingPartiallyBound {}, "
+      "descriptorBindingSampledImageUpdateAfterBind {}, "
+      "descriptorBindingUpdateUnusedWhilePending {}, maxBoundDescriptorSets "
+      "{}, update-after-bind sampled images per stage {}",
+      indexing_core ? "core" : (indexing_extension ? "extension" : "no"),
+      yes(indexing.runtimeDescriptorArray),
+      yes(features_2.features.shaderSampledImageArrayDynamicIndexing),
+      yes(indexing.descriptorBindingPartiallyBound),
+      yes(indexing.descriptorBindingSampledImageUpdateAfterBind),
+      yes(indexing.descriptorBindingUpdateUnusedWhilePending),
+      limits_2.properties.limits.maxBoundDescriptorSets,
+      indexing_limits.maxPerStageDescriptorUpdateAfterBindSampledImages);
   return fmt::format(
       "{}, vendor {:#06x} device {:#x}; driver {}, version {:#x}; Vulkan {}.{}.{}; "
       "independentBlend {}, geometryShader {}, fragmentStoresAndAtomics {}, "
@@ -123,7 +182,8 @@ std::string VulkanCommandProcessor::DaoDescribeDevice() const {
       yes(p.samplerAnisotropy), yes(p.sparseResidencyBuffer), yes(p.shaderClipDistance),
       yes(sampled(VK_FORMAT_BC1_RGBA_UNORM_BLOCK)), yes(sampled(VK_FORMAT_BC3_UNORM_BLOCK)),
       yes(sampled(VK_FORMAT_BC5_UNORM_BLOCK)), yes(sampled(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK)),
-      yes(sampled(VK_FORMAT_ASTC_4x4_UNORM_BLOCK)));
+      yes(sampled(VK_FORMAT_ASTC_4x4_UNORM_BLOCK))) +
+         native_renderer;
 }
 
 bool VulkanCommandProcessor::DaoReadGpuWrittenMemory(
