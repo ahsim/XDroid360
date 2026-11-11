@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 3.20)
 #   FMT_DIR   fmt, XXH_DIR xxHash: XenonRecomp's thirdparty copies (the same commits as XenosRecomp's)
 #   DXC_SRC   DirectXShaderCompiler's sources at DXC_COMMIT (include/dxc)
 #   DXC_LIB   the libdxcompiler.so built from them for the same target
+#   MSPACK_DIR  libmspack's mspack/ (XenonRecomp's thirdparty): lzxd.c, for State of Decay's
+#               XMemCompress (LZX) pak entries
 project(xdroid360_shaderlib CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,10 +26,12 @@ add_executable(xdroid360_shaderlib
   ${XR}/shader_recompiler.cpp
   ${NR_DIR}/src/nfsmw_shader_library.cpp
   ${FMT_DIR}/src/format.cc
-  ${XXH_DIR}/xxhash.c)
+  ${XXH_DIR}/xxhash.c
+  ${MSPACK_DIR}/lzxd.c)
 target_compile_definitions(xdroid360_shaderlib PRIVATE NFSMW_RECOMP)
 target_include_directories(xdroid360_shaderlib PRIVATE
-  ${CMAKE_BINARY_DIR}/gen ${XR} ${NR_DIR}/src ${FMT_DIR}/include ${XXH_DIR} ${DXC_SRC}/include)
+  ${CMAKE_BINARY_DIR}/gen ${XR} ${NR_DIR}/src ${FMT_DIR}/include ${XXH_DIR} ${DXC_SRC}/include ${MSPACK_DIR})
+set_source_files_properties(${MSPACK_DIR}/lzxd.c PROPERTIES COMPILE_OPTIONS "-w")
 # XenosRecomp's sources expect its precompiled header (std, fmt, xxhash) before anything else.
 set_source_files_properties(${XR}/shader_recompiler.cpp PROPERTIES COMPILE_OPTIONS
   "-include;${XR}/pch_min.h;-Wno-switch;-Wno-unused-variable;-Wno-null-arithmetic")

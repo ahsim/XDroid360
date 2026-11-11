@@ -86,6 +86,7 @@ if [ "$what" = shaderlib ] || [ "$what" = all ]; then
     -DCMAKE_BUILD_TYPE=Release \
     -DNR_DIR="$XDROID360_ROOT/native-renderer" \
     -DFMT_DIR="$XR_SRC/thirdparty/fmt" -DXXH_DIR="$XR_SRC/thirdparty/xxHash" \
+    -DMSPACK_DIR="$XR_SRC/thirdparty/libmspack/libmspack/mspack" \
     -DDXC_SRC="$DXC_SRC" -DDXC_LIB="$DXC_LIB"
   "$NINJA" -C "$SL_BUILD" xdroid360_shaderlib
   "$STRIP" --strip-all -o "$STAGE/shaderlib" "$SL_BUILD/xdroid360_shaderlib"
