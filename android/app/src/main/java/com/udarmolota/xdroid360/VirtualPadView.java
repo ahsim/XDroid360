@@ -119,6 +119,37 @@ public class VirtualPadView extends View {
         prefs = layoutPrefs(context, instanceId);
     }
 
+    /**
+     * The instance's pad layout as JSON ({"xdroid360_pad": 1, "positions": {key: fraction}}),
+     * for Export; {} positions when the pad was never moved (the default layout).
+     */
+    static String exportLayout(Context context, String instanceId) throws org.json.JSONException {
+        org.json.JSONObject positions = new org.json.JSONObject();
+        for (java.util.Map.Entry<String, ?> kv : layoutPrefs(context, instanceId).getAll().entrySet()) {
+            if (kv.getValue() instanceof Float) positions.put(kv.getKey(), ((Float) kv.getValue()).doubleValue());
+        }
+        return new org.json.JSONObject().put("xdroid360_pad", 1).put("positions", positions).toString(2);
+    }
+
+    /** Replaces the instance's pad layout with one from exportLayout; false if it isn't one. */
+    static boolean importLayout(Context context, String instanceId, String json) {
+        try {
+            org.json.JSONObject root = new org.json.JSONObject(json);
+            org.json.JSONObject positions = root.optJSONObject("positions");
+            if (root.optInt("xdroid360_pad") != 1 || positions == null) return false;
+            SharedPreferences.Editor e = layoutPrefs(context, instanceId).edit().clear();
+            for (java.util.Iterator<String> it = positions.keys(); it.hasNext(); ) {
+                String key = it.next();
+                double v = positions.optDouble(key, -1);
+                if (v >= 0 && v <= 1) e.putFloat(key, (float) v);
+            }
+            e.apply();
+            return true;
+        } catch (org.json.JSONException e) {
+            return false;
+        }
+    }
+
     private static SharedPreferences layoutPrefs(Context context, String instanceId) {
         SharedPreferences shared = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (instanceId == null) return shared;

@@ -72,6 +72,10 @@ public class LauncherActivity extends AppCompatActivity {
             registerForActivityResult(new ActivityResultContracts.CreateDocument("application/zip"), uri -> {
                 if (uri != null && exportFor != null) InstanceActions.exportSaves(this, exportFor, uri);
             });
+    private final ActivityResultLauncher<String> exportPad =
+            registerForActivityResult(new ActivityResultContracts.CreateDocument("application/json"), uri -> {
+                if (uri != null && exportFor != null) exportPadTo(exportFor, uri);
+            });
     private final ActivityResultLauncher<String[]> pickFile =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
                 if (uri != null && onPick != null && pickFor != null) {
@@ -125,6 +129,134 @@ public class LauncherActivity extends AppCompatActivity {
             public int getItemCount() { return builds.size() + instances.size(); }
         };
         list.setAdapter(adapter);
+
+        bottomNav = findViewById(R.id.bottom_nav);
+        bottomNav.setOnItemSelectedListener(this::onBottomNav);
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // Back from another tab goes home first; from home it leaves as usual.
+                if (bottomNav.getSelectedItemId() != R.id.tab_home) {
+                    bottomNav.setSelectedItemId(R.id.tab_home);
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                    setEnabled(true);
+                }
+            }
+        });
+    }
+
+    // -------------------- the bottom bar --------------------
+
+    private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav;
+    private boolean projectsFilled;
+    /** The Import/Export tab's mode and game. */
+    private boolean transferExport;
+    private Instance transferFor;
+
+    private boolean onBottomNav(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.tab_controls) {
+            // An action, not a tab: the editor opens and the current tab stays selected.
+            InstanceActions.choose(this, R.string.nav_pad_editor, instances,
+                    i -> startActivity(new Intent(this, PadEditorActivity.class).putExtra(InstanceActivity.EXTRA_ID, i.id)));
+            return false;
+        }
+        View home = findViewById(R.id.home_pane), transfer = findViewById(R.id.transfer_pane),
+                projects = findViewById(R.id.projects_pane);
+        home.setVisibility(id == R.id.tab_home ? View.VISIBLE : View.GONE);
+        transfer.setVisibility(id == R.id.tab_import || id == R.id.tab_export ? View.VISIBLE : View.GONE);
+        projects.setVisibility(id == R.id.tab_projects ? View.VISIBLE : View.GONE);
+        if (id == R.id.tab_import || id == R.id.tab_export) {
+            transferExport = id == R.id.tab_export;
+            bindTransfer();
+        } else if (id == R.id.tab_projects && !projectsFilled) {
+            ProjectsPane.fill(this, findViewById(R.id.projects_reddit), findViewById(R.id.projects_list));
+            projectsFilled = true;
+        }
+        return true;
+    }
+
+    /** Import or Export: the game (one radio button each), then its saves and its pad layout. */
+    private void bindTransfer() {
+        boolean none = instances.isEmpty();
+        findViewById(R.id.transfer_none).setVisibility(none ? View.VISIBLE : View.GONE);
+        for (int card : new int[] { R.id.transfer_game_card, R.id.transfer_saves_card, R.id.transfer_pad_card }) {
+            findViewById(card).setVisibility(none ? View.GONE : View.VISIBLE);
+        }
+        if (none) return;
+        // The game picked before (refresh() makes new Instance objects: matched by id).
+        Instance again = instances.get(0);
+        for (Instance i : instances) if (transferFor != null && i.id.equals(transferFor.id)) again = i;
+        transferFor = again;
+        android.widget.RadioGroup group = findViewById(R.id.transfer_game);
+        group.setOnCheckedChangeListener(null);
+        group.removeAllViews();
+        for (Instance i : instances) {
+            com.google.android.material.radiobutton.MaterialRadioButton b =
+                    new com.google.android.material.radiobutton.MaterialRadioButton(this);
+            b.setId(View.generateViewId());
+            b.setText(i.name);
+            b.setTag(i);
+            group.addView(b);
+            if (i == transferFor) group.check(b.getId());
+        }
+        group.setOnCheckedChangeListener((g, checked) -> transferFor = (Instance) g.findViewById(checked).getTag());
+
+        ((TextView) findViewById(R.id.transfer_saves_hint)).setText(
+                transferExport ? R.string.transfer_saves_export_hint : R.string.transfer_saves_import_hint);
+        ((TextView) findViewById(R.id.transfer_pad_hint)).setText(
+                transferExport ? R.string.transfer_pad_export_hint : R.string.transfer_pad_import_hint);
+        int button = transferExport ? R.string.transfer_export_button : R.string.transfer_import_button;
+        ((TextView) findViewById(R.id.transfer_saves)).setText(button);
+        ((TextView) findViewById(R.id.transfer_pad)).setText(button);
+        findViewById(R.id.transfer_saves).setOnClickListener(v -> {
+            if (transferExport) exportSavesOf(transferFor);
+            else pick(transferFor, InstanceActions::installSaves);
+        });
+        findViewById(R.id.transfer_pad).setOnClickListener(v -> {
+            if (transferExport) {
+                exportFor = transferFor;
+                exportPad.launch(padFileName(transferFor));
+            } else {
+                pick(transferFor, LauncherActivity::importPadFrom);
+            }
+        });
+    }
+
+    private static String padFileName(Instance i) {
+        String game = Instance.DAO_TITLE_ID.equals(i.titleId()) ? "DAO"
+                : Instance.SOD_TITLE_ID.equals(i.titleId()) ? "SoD" : i.titleId();
+        return game + "-gamepad.json";
+    }
+
+    private void exportPadTo(Instance i, Uri uri) {
+        try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) throw new java.io.IOException("can't write " + uri);
+            out.write(VirtualPadView.exportLayout(this, i.id).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            android.widget.Toast.makeText(this, R.string.pad_exported, android.widget.Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            android.widget.Toast.makeText(this, e.toString(), android.widget.Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static void importPadFrom(LauncherActivity a, Instance i, Uri uri) {
+        String json;
+        try (java.io.InputStream in = a.getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new java.io.IOException("can't read " + uri);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[8192];
+            int n;
+            while ((n = in.read(b)) > 0 && out.size() < (1 << 20)) out.write(b, 0, n);
+            json = out.toString("UTF-8");
+        } catch (java.io.IOException e) {
+            android.widget.Toast.makeText(a, e.toString(), android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        boolean ok = VirtualPadView.importLayout(a, i.id, json);
+        android.widget.Toast.makeText(a, ok ? R.string.pad_imported : R.string.pad_import_bad,
+                android.widget.Toast.LENGTH_LONG).show();
     }
 
     @Override
@@ -140,6 +272,7 @@ public class LauncherActivity extends AppCompatActivity {
         builds.addAll(BuildJob.unfinished(this));
         adapter.notifyDataSetChanged();
         empty.setVisibility(instances.isEmpty() && builds.isEmpty() ? View.VISIBLE : View.GONE);
+        if (findViewById(R.id.transfer_pane).getVisibility() == View.VISIBLE) bindTransfer();
     }
 
     /** A game being built (or whose build stopped): its build screen, or delete. */
@@ -201,11 +334,6 @@ public class LauncherActivity extends AppCompatActivity {
         else if (id == R.id.action_help || id == R.id.nav_how) showHow();
         else if (id == R.id.nav_driver) InstanceActions.choose(this, R.string.nav_install_driver, instances,
                 i -> pick(i, InstanceActions::installDriver));
-        else if (id == R.id.nav_saves_import) InstanceActions.choose(this, R.string.saves_import, instances,
-                i -> pick(i, InstanceActions::installSaves));
-        else if (id == R.id.nav_saves_export) InstanceActions.choose(this, R.string.saves_export, instances, this::exportSavesOf);
-        else if (id == R.id.nav_pad) InstanceActions.choose(this, R.string.nav_pad_editor, instances,
-                i -> startActivity(new Intent(this, PadEditorActivity.class).putExtra(InstanceActivity.EXTRA_ID, i.id)));
         else if (id == R.id.nav_bug) bugReport(instances.isEmpty() ? null : instances.get(0));
         else if (id == R.id.nav_about) showAbout();
         else return false;

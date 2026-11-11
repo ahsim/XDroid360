@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher's bottom bar (as in RimDroid and Zomdroid). Controls opens the on-screen
+     gamepad's editor and leaves the current tab as it is (LauncherActivity.onBottomNav). -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/tab_home"
+        android:icon="@drawable/ic_nav_home"
+        android:title="@string/tab_home" />
+    <item
+        android:id="@+id/tab_import"
+        android:icon="@drawable/ic_import"
+        android:title="@string/tab_import" />
+    <item
+        android:id="@+id/tab_export"
+        android:icon="@drawable/ic_export"
+        android:title="@string/tab_export" />
+    <item
+        android:id="@+id/tab_controls"
+        android:icon="@drawable/ic_gamepad"
+        android:title="@string/tab_controls" />
+    <item
+        android:id="@+id/tab_projects"
+        android:icon="@drawable/ic_nav_projects"
+        android:title="@string/tab_projects" />
+</menu>
