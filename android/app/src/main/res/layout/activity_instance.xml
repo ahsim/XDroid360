@@ -152,6 +152,60 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Frame rate cap: the game's own [video] frame_rate, read and written in place. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/fps_cap_card"
+                style="@style/DaoCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+
+                <LinearLayout
+                    style="@style/DaoCardContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        style="@style/DaoCardTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/fps_cap_label" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/fps_cap_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                    <RadioGroup
+                        android:id="@+id/fps_cap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/fps_cap_30"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="16dp"
+                            android:text="@string/fps_cap_30" />
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/fps_cap_60"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="16dp"
+                            android:text="@string/fps_cap_60" />
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/fps_cap_off"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/fps_cap_off" />
+                    </RadioGroup>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- The game's language. -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/language_card"
@@ -171,7 +225,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/setting_language" />
 
-                    <!-- Its buttons are made from Instance.LANGUAGES. -->
+                    <!-- Its buttons are made from the game's Instance.languages(). -->
                     <RadioGroup
                         android:id="@+id/language"
                         android:layout_width="match_parent"

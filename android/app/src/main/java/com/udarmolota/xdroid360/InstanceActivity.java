@@ -113,9 +113,43 @@ public class InstanceActivity extends AppCompatActivity {
     private com.google.android.material.textfield.TextInputEditText env;
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        bindFrameRateCap(); // again on return: the game's own Graphics tab may have changed it
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         writeEnv();
+    }
+
+    /**
+     * The frame rate limit (30, 60, none), shown from the game's config.toml and written there at
+     * once, never at start: the game's own Graphics settings keep the same value, so neither side
+     * overrides the other. Any other rate the game was set to leaves no button checked. A package
+     * with its own frame rate option (options.frame_rate, applied at every start) keeps that one.
+     */
+    private void bindFrameRateCap() {
+        if (instance.option("frame_rate") != null) return;
+        findViewById(R.id.fps_cap_card).setVisibility(View.VISIBLE);
+        android.widget.RadioGroup group = findViewById(R.id.fps_cap);
+        int[] ids = { R.id.fps_cap_30, R.id.fps_cap_60, R.id.fps_cap_off };
+        int[] rates = { 30, 60, 0 };
+        group.setOnCheckedChangeListener(null);
+        group.clearCheck();
+        int cap = instance.frameRateCap();
+        for (int i = 0; i < rates.length; i++) if (rates[i] == cap) group.check(ids[i]);
+        group.setOnCheckedChangeListener((g, checked) -> {
+            for (int i = 0; i < ids.length; i++) {
+                if (ids[i] != checked) continue;
+                try {
+                    instance.setFrameRateCap(rates[i]);
+                } catch (IOException e) {
+                    Toast.makeText(this, e.toString(), Toast.LENGTH_LONG).show();
+                }
+            }
+        });
     }
 
     /** userdata/env.txt: KEY=VALUE lines the game starts with (GameActivity.applyEnvFile). */
@@ -169,16 +203,15 @@ public class InstanceActivity extends AppCompatActivity {
         java.util.List<CharSequence> languageLabels = new java.util.ArrayList<>();
         languageIds.add("");
         languageLabels.add(getString(R.string.language_auto));
-        String[] names = getResources().getStringArray(R.array.languages);
-        for (int l = 0; l < Instance.LANGUAGES.length; l++) {
-            languageIds.add(Instance.LANGUAGES[l]);
-            languageLabels.add(names[l]);
+        for (String l : instance.languages()) {
+            languageIds.add(l);
+            languageLabels.add(Instance.languageName(l));
         }
         findViewById(R.id.language_card).setVisibility(View.VISIBLE);
         bindRadios(findViewById(R.id.language), languageLabels, Math.max(0, languageIds.indexOf(instance.language)),
                 i -> instance.language = languageIds.get(i));
-        // The renderer, for the games that have the native one (Dragon Age: Origins).
-        if (Instance.DAO_TITLE_ID.equals(instance.titleId())) {
+        // The renderer, for the games that have the native one.
+        if (instance.hasNativeRenderer()) {
             findViewById(R.id.renderer_card).setVisibility(View.VISIBLE);
             // "Native" with a small green "NEW" tag after it.
             String label = getString(R.string.renderer_native);

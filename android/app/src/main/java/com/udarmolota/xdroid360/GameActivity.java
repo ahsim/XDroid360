@@ -115,7 +115,9 @@ public class GameActivity extends SDLActivity {
         if (!new File(game, "default.xex").isFile()) {
             Log.e(TAG, "No game at " + game + ": copy DAORecomp's install/game there (see docs/PHASE5_runbook.md)");
         }
+        applyFullScreenWindow();
         super.onCreate(savedInstanceState);
+        hideSystemBars();
         // The on-screen gamepad over SDL's surface (mLayout holds the surface).
         if (mLayout != null) {
             VirtualPadView pad = new VirtualPadView(this, current != null ? current.id : null);
@@ -124,6 +126,40 @@ public class GameActivity extends SDLActivity {
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
             setUpPerfOverlay();
         }
+    }
+
+    // Full screen, set by the activity itself before the window is laid out (as in ValDroid).
+    // SDL only switches to full screen later, when the game creates its window, and with the
+    // deprecated system-UI flags; it also writes the cutout mode into getAttributes() without
+    // setAttributes(). Some firmware (TECNO's HiOS, seen on a Mali-G57 phone) then keeps the
+    // navigation bar's strip for itself: a black band on the right over the on-screen gamepad.
+    private void applyFullScreenWindow() {
+        android.view.Window window = getWindow();
+        android.view.WindowManager.LayoutParams lp = window.getAttributes();
+        lp.layoutInDisplayCutoutMode = android.os.Build.VERSION.SDK_INT >= 30
+                ? android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                : android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        window.setAttributes(lp);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false);
+        }
+    }
+
+    // Hides both the status bar and the navigation bar; a swipe shows them for a moment.
+    // Android 10 keeps SDL's own system-UI flags.
+    private void hideSystemBars() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
+        android.view.WindowInsetsController c = getWindow().getInsetsController();
+        if (c != null) {
+            c.hide(android.view.WindowInsets.Type.systemBars());
+            c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemBars(); // again after dialogs and coming back to the game
     }
 
     // The game's keyboard (XamShowKeyboardUI, e.g. the character's name): an Android dialog
@@ -329,8 +365,8 @@ public class GameActivity extends SDLActivity {
             XeniaConfig.set(config, "game", "language", "\"" + current.languageToUse() + "\"");
             // Always: it saves GPU work, and the plain scaling it uses looks the same on a phone.
             XeniaConfig.set(config, "dao_present_prerotate", "true");
-            // The renderer the settings chose (Dragon Age: Origins has the native one).
-            if (Instance.DAO_TITLE_ID.equals(current.titleId())) {
+            // The renderer the settings chose, for the games that have the native one.
+            if (current.hasNativeRenderer()) {
                 XeniaConfig.set(config, "dao_gpu_renderer", "\"" + current.rendererToUse() + "\"");
             }
             org.json.JSONObject frameRate = current.option("frame_rate");

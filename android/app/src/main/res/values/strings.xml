@@ -43,11 +43,6 @@
     <string name="renderer_new">NEW</string>
     <string name="renderer_hint">Xenia emulates the Xbox 360\'s graphics chip: the most tested way. Native draws the game\'s scenes with Vulkan directly, without that emulation; it is new, so if something looks wrong, switch back to Xenia and send a bug report. Takes effect the next time the game starts.</string>
     <string name="language_auto">The phone\'s language</string>
-    <string-array name="languages">
-        <item>English</item>
-        <item>Italiano</item>
-        <item>Español</item>
-    </string-array>
     <string name="setting_diagnostics">Diagnostics for bug reports</string>
     <string name="setting_diagnostics_help">Writes the GPU\'s measurements into the game\'s log (a little slower). Turn it on, play the part that misbehaves, then Report a bug.</string>
     <string name="setting_lod">Texture quality</string>
@@ -104,6 +99,11 @@
     <string name="preset_balanced">Balanced</string>
     <string name="preset_low">Low</string>
     <string name="preset_very_low">Very low</string>
+    <string name="fps_cap_label">Frame rate limit</string>
+    <string name="fps_cap_hint">A lower limit means less heat and longer battery; the game\'s own Graphics settings change the same value. Takes effect the next time the game starts.</string>
+    <string name="fps_cap_30">30 FPS</string>
+    <string name="fps_cap_60">60 FPS</string>
+    <string name="fps_cap_off">No limit</string>
     <string name="setting_frame_rate">Frame rate</string>
     <string name="frame_rate_value">%1$d fps</string>
     <string name="lod_full">Full</string>

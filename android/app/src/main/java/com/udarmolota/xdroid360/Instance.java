@@ -22,6 +22,7 @@ import java.util.List;
 final class Instance {
     static final String DEV_ID = "dev";
     static final String DAO_TITLE_ID = "454108C0";
+    static final String SOD_TITLE_ID = "584111E8";
 
     // Settings, kept in instance.json.
     /** auto: the built-in Turnip on an Adreno 8xx (what it is made for), else the phone's own. */
@@ -46,8 +47,35 @@ final class Instance {
     String language = "";
     /** The GPU's measurements in the game's log, for a bug report (DAO_GPU_STATS, DAO_GPU_TIMING). */
     boolean diagnostics = false;
-    /** The languages the supported discs have text for (both games read the same key). */
-    static final String[] LANGUAGES = { "english", "italian", "spanish" };
+    /** The languages each disc has text for ([game] language, read by both games' runtimes). */
+    private static final String[] DAO_LANGUAGES = { "english", "italian", "spanish" };
+    private static final String[] SOD_LANGUAGES = { "english", "french", "german", "italian", "spanish" };
+
+    /** This game's languages, for the settings' language card. */
+    String[] languages() {
+        return SOD_TITLE_ID.equals(titleId()) ? SOD_LANGUAGES : DAO_LANGUAGES;
+    }
+
+    /** A language's name in that language, as the card shows it. */
+    static String languageName(String id) {
+        switch (id) {
+            case "english": return "English";
+            case "french": return "Français";
+            case "german": return "Deutsch";
+            case "italian": return "Italiano";
+            case "spanish": return "Español";
+            default: return id;
+        }
+    }
+
+    /**
+     * State of Decay's Russian text, made on the phone from a Russian title update (the recipe's
+     * russian-text step). SoD's runtime shows it in place of French, so "french" plays in Russian
+     * when it is there.
+     */
+    boolean hasRussianText() {
+        return SOD_TITLE_ID.equals(titleId()) && new File(root, "russian/gamedata.pak").isFile();
+    }
     boolean vibrateOnTouch = false;
     /** The frame rate picked, 0 for the package's default (options.frame_rate). */
     int frameRate = 0;
@@ -59,6 +87,15 @@ final class Instance {
     static final String RENDERER_XENIA = "xenia", RENDERER_NATIVE = "native";
     /** The player's choice, "" for the game's default (rendererToUse). */
     String renderer = "";
+
+    /**
+     * Whether the game has the native renderer, so the settings offer the choice. Both games read
+     * the same key and fall back to Xenia by themselves while the shader library is missing.
+     */
+    boolean hasNativeRenderer() {
+        String id = titleId();
+        return DAO_TITLE_ID.equals(id) || SOD_TITLE_ID.equals(id);
+    }
 
     /** The renderer to start with: the chosen one, else native for Dragon Age: Origins, else Xenia. */
     String rendererToUse() {
@@ -106,6 +143,32 @@ final class Instance {
     JSONObject option(String name) {
         JSONObject options = manifest.optJSONObject("options");
         return options != null ? options.optJSONObject(name) : null;
+    }
+
+    /** The game's config.toml (userdata), which both games' runtimes and the launcher write. */
+    File config() { return new File(userdata(), "config.toml"); }
+
+    /**
+     * The frame rate cap the game will run at ([video] frame_rate, 0 = no limit): the game's own
+     * setting (Dragon Age's in-game Graphics tab writes the same key), else its default: 30 for
+     * State of Decay, and for Dragon Age 60, or 30 on a GPU short of an Adreno 8xx (what its first
+     * start writes, GameActivity.applyWeakGpuDefaults).
+     */
+    int frameRateCap() {
+        String v = XeniaConfig.get(config(), "video", "frame_rate");
+        if (v != null) {
+            try {
+                return Integer.parseInt(v);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (SOD_TITLE_ID.equals(titleId())) return 30;
+        return GameActivity.gpuModel().startsWith("Adreno8") ? 60 : 30;
+    }
+
+    /** Sets the frame rate cap in the game's config.toml at once; the game reads it at start. */
+    void setFrameRateCap(int fps) throws java.io.IOException {
+        XeniaConfig.set(config(), "video", "frame_rate", String.valueOf(fps));
     }
 
     /** The frame rate to run at, or 0 when the package offers no choice. */
@@ -275,14 +338,24 @@ final class Instance {
         return i;
     }
 
-    /** The language to start the game in: the chosen one, else the phone's (Italian, Spanish), else English. */
+    /**
+     * The language to start the game in: the chosen one if this game has it, else the phone's
+     * when the game has it, else English. A Russian phone gets State of Decay's Russian text
+     * (played as "french") only when it was made on this phone.
+     */
     String languageToUse() {
-        if (!language.isEmpty()) return language;
+        java.util.List<String> has = java.util.Arrays.asList(languages());
+        if (has.contains(language)) return language;
+        String phone;
         switch (java.util.Locale.getDefault().getLanguage()) {
-            case "it": return "italian";
-            case "es": return "spanish";
-            default: return "english";
+            case "fr": phone = "french"; break;
+            case "de": phone = "german"; break;
+            case "it": phone = "italian"; break;
+            case "es": phone = "spanish"; break;
+            case "ru": phone = hasRussianText() ? "french" : "english"; break;
+            default: phone = "english";
         }
+        return has.contains(phone) ? phone : "english";
     }
 
     /** name, or "name 2", "name 3"... if another instance already has it. */

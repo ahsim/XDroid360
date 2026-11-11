@@ -17,6 +17,26 @@ import java.util.List;
 final class XeniaConfig {
     private XeniaConfig() {}
 
+    /** The value of key in [sectionName] (as written, quotes and all), or null if it isn't there. */
+    static String get(File config, String sectionName, String key) {
+        if (!config.isFile()) return null;
+        try {
+            boolean in = false;
+            for (String l : new String(Files.readAllBytes(config.toPath()), StandardCharsets.UTF_8).split("\n")) {
+                String t = l.trim();
+                if (t.startsWith("[")) {
+                    in = t.equals("[" + sectionName + "]");
+                } else if (in && (t.startsWith(key + " ") || t.startsWith(key + "="))) {
+                    String v = t.substring(t.indexOf('=') + 1);
+                    int comment = v.indexOf('#');
+                    return (comment >= 0 ? v.substring(0, comment) : v).trim();
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        return null;
+    }
+
     static void set(File config, String key, String value) throws IOException {
         set(config, "xenia", key, value);
     }
