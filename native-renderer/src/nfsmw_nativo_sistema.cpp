@@ -413,6 +413,12 @@ REXCVAR_DEFINE_STRING(nfsmw_nativo_diag_vertices_ps, "", "NFSMW",
 // The game measures with an occlusion query how much of the sun is visible (sub_82225438: GetData, Issue(BEGIN),
 // a draw and Issue(END)) and uses it to turn off the flare when trees or terrain cover it. With the faked count of
 // 1000 samples the flare was always drawn in full: sky burned to white and blue or purple halos in the trees.
+REXCVAR_DEFINE_BOOL(xdroid360_oclusion_acumulada, false, "NFSMW",
+                    "XDroid360: the faked occlusion count (queries outside Most Wanted's begin/end pairing) "
+                    "is a free-running counter, 1000 samples more at each EVENT_WRITE_ZPD, as the console's "
+                    "sample counters are. State of Decay's D3D snapshots them once per query and subtracts "
+                    "the previous snapshot: the same 1000 every time read as 0 samples, so the game culled "
+                    "every object of its color pass. false = always 1000, as before");
 REXCVAR_DEFINE_INT32(nfsmw_nativo_oclusion, 1, "NFSMW",
                      "Renderizador nativo: consultas de oclusion del juego (el destello del sol). 1 = medidas en la GPU, "
                      "como la Xbox 360; 0 = cuenta fingida de 1000 muestras (lo de antes de la build 146: el destello "
@@ -1135,6 +1141,10 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
       std::memset(cuentas, 0, sizeof(*cuentas));
       if (marcas_aqui) {
         escrita = modo == 2 ? 0 : kMuestrasOclusion;
+        if (modo != 2 && REXCVAR_GET(xdroid360_oclusion_acumulada)) {
+          oclusion_acumulada_ += kMuestrasOclusion;  // wraps like the console's 32-bit counters
+          escrita = oclusion_acumulada_;
+        }
         cuentas->ZPass_A = escrita;
         cuentas->Total_A = escrita;
         ++oclusion_contadores_[4];
@@ -5196,6 +5206,7 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
   // end, written with the faked count outside a pair, sum of the written measurements and the
   // largest one written.
   std::array<uint64_t, 7> oclusion_contadores_{};
+  uint32_t oclusion_acumulada_ = 0;  // xdroid360_oclusion_acumulada
   std::array<uint64_t, 7> oclusion_contadores_previos_{};
   uint64_t oclusion_host_previo_[5] = {};  // DestinosNativos::EstadisticasOclusion at the previous report
   // GPU time at the previous report (C2).

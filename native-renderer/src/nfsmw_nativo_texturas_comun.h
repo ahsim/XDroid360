@@ -205,6 +205,8 @@ inline int32_t UbicacionDeUso(uint8_t uso, uint8_t indice) {
       return indice == 0 ? 9 : -1;
     case 1:  // pesos de mezcla
       return indice == 0 ? 10 : -1;
+    case 4:  // XDroid360: point size (State of Decay's particles), BINORMAL0's location
+      return indice == 0 ? 3 : -1;
     default:
       return -1;
   }

@@ -111,6 +111,10 @@ static constexpr DeclUsageLocation USAGE_LOCATIONS[] =
     { DeclUsage::TexCoord, 6, 14 },
     { DeclUsage::TexCoord, 7, 15 },
     { DeclUsage::Position, 1, 15 },
+    // XDroid360: State of Decay's particle vertex shaders read PSIZE0. Every location up to 15 is
+    // taken, and 16 is the most a GPU must allow, so it shares BINORMAL0's: a shader with both would
+    // fail to compile (a duplicate location), never draw wrong. The renderer's UbicacionDeUso agrees.
+    { DeclUsage::PointSize, 0, 3 },
 #ifdef NFSC_RECOMP
     // NFS Carbon: one vertex shader reads seven positions and another TEXCOORD8.
     { DeclUsage::Position, 2, 16 },
@@ -129,6 +133,11 @@ static constexpr uint32_t kPixelConstants = 256;
 #else
 static constexpr uint32_t kPixelConstants = 224;
 #endif
+// XDroid360: State of Decay's pixel shaders read up to c255 too. A pixel shader whose constant table
+// reaches past kPixelConstants gets all 256 (pixelConstants, and NFSMW_PS_CONSTANTS for
+// shader_common.h's g_UboPixel); the others are translated exactly as before, so Dragon Age's
+// library doesn't change.
+static constexpr uint32_t kAllPixelConstants = 256;
 
 static constexpr std::pair<DeclUsage, size_t> INTERPOLATORS[] =
 {
@@ -1218,13 +1227,29 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
     assert((shaderContainer->flags & 0xFFFF0000) == 0x102A0000);
     assert(shaderContainer->constantTableOffset != NULL);
 
-    out += include;
-    out += '\n';
-
     isPixelShader = (shaderContainer->flags & 0x1) == 0;
 
     const auto constantTableContainer = reinterpret_cast<const ConstantTableContainer*>(shaderData + shaderContainer->constantTableOffset);
     constantTableData = reinterpret_cast<const uint8_t*>(&constantTableContainer->constantTable);
+
+    // XDroid360: how many float constants this pixel shader has (see kAllPixelConstants).
+    pixelConstants = kPixelConstants;
+    if (isPixelShader)
+    {
+        for (uint32_t i = 0; i < constantTableContainer->constantTable.constants; i++)
+        {
+            const auto constantInfo = reinterpret_cast<const ConstantInfo*>(
+                constantTableData + constantTableContainer->constantTable.constantInfo + i * sizeof(ConstantInfo));
+            if (constantInfo->registerSet == RegisterSet::Float4 &&
+                uint32_t(constantInfo->registerIndex) + uint32_t(constantInfo->registerCount) > kPixelConstants)
+                pixelConstants = kAllPixelConstants;
+        }
+    }
+    if (pixelConstants != kPixelConstants)
+        out += fmt::format("#define NFSMW_PS_CONSTANTS {}\n", pixelConstants);
+
+    out += include;
+    out += '\n';
 
     out += "#ifdef __spirv__\n\n";
 
@@ -1265,7 +1290,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
 
             if (constantInfo->registerCount > 1)
             {
-                uint32_t tailCount = (isPixelShader ? kPixelConstants : 256) - constantInfo->registerIndex;
+                uint32_t tailCount = (isPixelShader ? pixelConstants : 256) - constantInfo->registerIndex;
 
                 // NFSMW: dynamic UBO or pointer, depending on SPEC_CONSTANT_CONSTANTES_UBO.
                 println("#define {}(INDEX) select((INDEX) < {}, (NFSMW_UBO ? g_Ubo{}.v[{} + min(INDEX, {})] : vk::RawBufferLoad<float4>(g_PushConstants.{}ShaderConstants + ({} + min(INDEX, {})) * 16, 0x10)), 0.0)",
@@ -1341,7 +1366,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
 
             if (constantInfo->registerCount > 1)
             {
-                uint32_t tailCount = (isPixelShader ? kPixelConstants : 256) - constantInfo->registerIndex;
+                uint32_t tailCount = (isPixelShader ? pixelConstants : 256) - constantInfo->registerIndex;
                 println("#define {0}(INDEX) select((INDEX) < {1}, {0}[min(INDEX, {2})], 0.0)", constantName, tailCount, tailCount - 1);
             }
         }

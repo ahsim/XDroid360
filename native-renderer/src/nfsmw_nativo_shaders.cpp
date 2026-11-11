@@ -158,18 +158,24 @@ const char* Leer(const nfsmw::native::Shader& shader, EntradaShader& e) {
   // Float registers the SPIR-V reads: the highest in the table, or up to the end of the
   // buffer if there is an array with relative indexing (XenosRecomp shader_recompiler.cpp:
   // 1172-1183: tailCount = 256 in VS and 224 in PS).
+  // XDroid360: a pixel shader whose table reaches past c223 gets all 256 there too (XenosRecomp
+  // pixelConstants; State of Decay has them).
+#if defined(NFSC_RECOMP)
+  uint32_t registros_ps = 256;  // NFS Carbon: its XenosRecomp declares all 256 (NFSC_RECOMP)
+#else
+  uint32_t registros_ps = 224;
+#endif
+  for (uint32_t i = 0; i < constantes; ++i) {
+    const size_t p = base + info + size_t(i) * 20;
+    if (c.U16(p + 4) == 2 && uint32_t(c.U16(p + 6)) + c.U16(p + 8) > registros_ps) registros_ps = 256;
+  }
   uint32_t registros_float = 0;
   for (uint32_t i = 0; i < constantes; ++i) {
     const size_t p = base + info + size_t(i) * 20;
     if (c.U16(p + 4) == 2) {  // RegisterSet::Float4
       const uint32_t indice = c.U16(p + 6);
       const uint32_t cuantos = c.U16(p + 8);
-#if defined(NFSC_RECOMP)
-      constexpr uint32_t kRegistrosPs = 256;  // NFS Carbon: its XenosRecomp declares all 256 (NFSC_RECOMP)
-#else
-      constexpr uint32_t kRegistrosPs = 224;
-#endif
-      registros_float = std::max(registros_float, cuantos > 1 ? (e.vertices ? 256u : kRegistrosPs)
+      registros_float = std::max(registros_float, cuantos > 1 ? (e.vertices ? 256u : registros_ps)
                                                               : indice + 1);
     }
   }

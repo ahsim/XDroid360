@@ -668,6 +668,12 @@ REXCVAR_DEFINE_STRING(xdroid360_diag_omitir_vs, "", "NFSMW",
 REXCVAR_DEFINE_STRING(xdroid360_diag_opaco_ps, "", "NFSMW",
                       "XDroid360 (tests only): pixel shader numbers (comma-separated) drawn without blending "
                       "(source ONE, destination ZERO), to see what the shader itself outputs");
+REXCVAR_DEFINE_BOOL(xdroid360_fetch_tipo_invalido, false, "NFSMW",
+                    "XDroid360: texture fetch constants whose type field is 0 (\"invalid texture\") are "
+                    "sampled like textures, as Xenia does with gpu_allow_invalid_fetch_constants. State of "
+                    "Decay copies its normals back into EDRAM with such a constant; with an empty texture "
+                    "there the forward pass read black normals and the sun and its shadows were gone. "
+                    "false = an empty texture, as before");
 REXCVAR_DEFINE_BOOL(xdroid360_entrada_propia, true, "NFSMW",
                     "XDroid360: each vertex element keeps its own fetch instruction first (CalcularEntrada); "
                     "false = the first fetch that writes the element's register, as before (the fire's colour "
@@ -676,6 +682,13 @@ REXCVAR_DEFINE_BOOL(xdroid360_filtros_tfetch, true, "NFSMW",
                     "XDroid360: apply the texture filters the shader's own fetch instructions ask for over the "
                     "fetch constant's, like Xenia (Dragon Age's lightmaps came out point-sampled in blocks). "
                     "false = the fetch constant's only, as before");
+REXCVAR_DEFINE_BOOL(xdroid360_texturas_gamma, false, "NFSMW",
+                    "XDroid360: 2D and cube textures whose fetch constant asks for gamma on x, y and z "
+                    "(TextureSign::kGamma) are created with the sRGB variant of their host format, so the "
+                    "sampler converts them to linear before filtering, as the console does after sampling. "
+                    "State of Decay samples its albedo that way and multiplies it by the light directly: "
+                    "read as plain UNORM the lit picture is pale and washed out. false = read unsigned, as "
+                    "before");
 REXCVAR_DEFINE_BOOL(xdroid360_color_vertice_bgra, false, "NFSMW",
                     "XDroid360 (tests only): vertex colors in k_8_8_8_8 read with red and blue swapped "
                     "(B8G8R8A8). For finding where Dragon Age's fire turns blue");
@@ -1331,12 +1344,10 @@ constexpr uint32_t kIndicesDomoCielo = 480;
 constexpr uint32_t kCieloFotogramasPrueba = 90;
 constexpr uint32_t kCieloFotogramasConUno = 90;
 constexpr VkDeviceSize kUboBytesVs = 256 * 16;
-#if defined(NFSC_RECOMP)
-// NFS Carbon's pixel shaders use all 256 pixel constants (the character skin reads c232-c239).
+// NFS Carbon's pixel shaders use all 256 pixel constants (the character skin reads c232-c239), and
+// so do some of State of Decay's. XDroid360: the UBO range covers all 256 for every game; a shader
+// that declares 224 reads only those (shader_common.h NFSMW_PS_CONSTANTS).
 constexpr VkDeviceSize kUboBytesPs = 256 * 16;
-#else
-constexpr VkDeviceSize kUboBytesPs = 224 * 16;
-#endif
 #if defined(NFSC_RECOMP)
 constexpr VkDeviceSize kUboBytesCompartidas = 32 * 16;  // 128 words
 #else
@@ -1656,12 +1667,15 @@ bool FormatoTexturaDe(uint32_t formato, FormatoTextura& f) {
     case 26:  // k_16_16_16_16
       f = {VK_FORMAT_R16G16B16A16_UNORM, 1, 8, 2, kSwizzleRGBA};
       return true;
+    case 27:  // k_16_EXPAND (XDroid360: half floats in memory, as Xenia loads them; State of Decay)
     case 30:  // k_16_FLOAT
       f = {VK_FORMAT_R16_SFLOAT, 1, 2, 2, kSwizzleRRRR};
       return true;
+    case 28:  // k_16_16_EXPAND
     case 31:  // k_16_16_FLOAT
       f = {VK_FORMAT_R16G16_SFLOAT, 1, 4, 2, kSwizzleRGGG};
       return true;
+    case 29:  // k_16_16_16_16_EXPAND
     case 32:  // k_16_16_16_16_FLOAT
       f = {VK_FORMAT_R16G16B16A16_SFLOAT, 1, 8, 2, kSwizzleRGBA};
       return true;
@@ -2090,6 +2104,16 @@ class DibujosVulkanImpl final : public DibujosVulkan {
         }
         REXLOG_INFO("[compatibilidad] BC{}: conversion CPU a {} (mips y cubos incluidos)",
                     i + 1, i < 3 ? "RGBA8" : i == 3 ? "R8" : "RG8");
+      }
+    }
+    // xdroid360_texturas_gamma: the sRGB variants need the same features as the UNORM formats checked above.
+    {
+      const VkFormat formatos_gamma[] = {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_BC1_RGBA_SRGB_BLOCK,
+          VK_FORMAT_BC2_SRGB_BLOCK, VK_FORMAT_BC3_SRGB_BLOCK};
+      for (uint32_t i = 0; i < 4; ++i) {
+        VkFormatProperties fp{};
+        ifn.vkGetPhysicalDeviceFormatProperties(dispositivo_->physical_device(), formatos_gamma[i], &fp);
+        gamma_ok_[i] = (fp.optimalTilingFeatures & requerido) == requerido;
       }
     }
     // nfsmw_nativo_bc1_16_bits: BC1 converted on the CPU goes to A1R5G5B5 (its features are mandatory in Vulkan,
@@ -4987,6 +5011,7 @@ class DibujosVulkanImpl final : public DibujosVulkan {
      */
     diag_omitir_ps_texto_ = REXCVAR_GET(nfsmw_nativo_diag_omitir_ps);
     filtros_tfetch_ = REXCVAR_GET(xdroid360_filtros_tfetch);
+    texturas_gamma_ = REXCVAR_GET(xdroid360_texturas_gamma);
     diag_vertices_repetidos_ = REXCVAR_GET(nfsmw_nativo_diag_vertices_repetidos);
     dedupe_activo_ = REXCVAR_GET(nfsmw_nativo_dedupe_vertices);
     vertices_base_cero_ = REXCVAR_GET(nfsmw_nativo_vertices_base_cero) && !vertices_base_cero_apagado_;
@@ -8681,6 +8706,50 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     return &entrada_;
   }
 
+  // What is done with a fetch constant's sign fields (index into the texts of AnotarSignosTextura).
+  enum : uint32_t {
+    kSignosGamma,
+    kSignosMezcla,
+    kSignosApagado,
+    kSignosVolumen,
+    kSignosSwizzle,
+    kSignosSinSrgb,
+    kSignosResuelta,
+    kSignosSinFormato,
+  };
+
+  // XDroid360: the sign fields of a texture fetch constant (bits 2-9 of f[0]: x, y, z, w with 2 bits each;
+  // 0 unsigned, 1 signed, 2 unsigned biased, 3 gamma), once per distinct combination and 24 lines at most.
+  void AnotarSignosTextura(uint32_t signos, uint32_t formato, uint32_t dimension, uint32_t camino) {
+    if (!signos) {
+      return;
+    }
+    if (camino != kSignosGamma) {
+      Avisar(31, "texturas con signo o gamma: se leen sin signo");
+    }
+    if (avisos_signos_.size() >= 24 ||
+        !avisos_signos_.insert(signos | (formato << 8) | (dimension << 14) | (camino << 16)).second) {
+      return;
+    }
+    static const char* const kSignos[4] = {"sin signo", "con signo", "sesgado", "gamma"};
+    static const char* const kCaminos[] = {
+        "gamma a lineal con el formato sRGB del host",
+        "se leen sin signo (solo se convierte gamma en x, y, z a la vez)",
+        "se leen sin signo (xdroid360_texturas_gamma apagado)",
+        "se leen sin signo (textura 3D)",
+        "se leen sin signo (el swizzle mezcla el alfa con el color)",
+        "se leen sin signo (su formato del host no tiene variante sRGB)",
+        "se leen sin signo (textura resuelta)",
+        "formato no soportado",
+    };
+    REXLOG_INFO("[nativo] C6: textura con signos {:02X} (x {} y {} z {} w {}), formato {}, {}: {}", signos,
+                kSignos[signos & 0x3], kSignos[(signos >> 2) & 0x3], kSignos[(signos >> 4) & 0x3],
+                kSignos[(signos >> 6) & 0x3], formato,
+                dimension == uint32_t(xenos::DataDimension::kCube) ? "cubo"
+                    : dimension == uint32_t(xenos::DataDimension::k3D) ? "3D" : "2D",
+                kCaminos[camino]);
+  }
+
   // Texture of a fetch constant: heap slot and, if it has to be uploaded, it is left in texturas_a_subir_
   // with its data already prepared. Base level of 2D textures and cubemaps.
   void PrepararTextura(const uint32_t* f, uint32_t& ranura, uint32_t& monton,
@@ -8692,7 +8761,9 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     alto_host_out = 0;
     muestreo_puntual = false;
     valido_hasta = fotograma_;  // by default, this frame only
-    if ((f[0] & 0x3) != uint32_t(xenos::FetchConstantType::kTexture)) {
+    if ((f[0] & 0x3) != uint32_t(xenos::FetchConstantType::kTexture) &&
+        !((f[0] & 0x3) == uint32_t(xenos::FetchConstantType::kInvalidTexture) &&
+          REXCVAR_GET(xdroid360_fetch_tipo_invalido))) {
       return;
     }
     const uint32_t dimension = (f[5] >> 9) & 0x3;
@@ -8704,13 +8775,14 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     }
     monton = cubo ? 2 : volumen ? 1 : 0;
     const uint32_t capas = cubo ? 6 : 1;
-    if ((f[0] >> 2) & 0xFF) {
-      Avisar(31, "texturas con signo o gamma: se leen sin signo");
-    }
+    // sign_x, sign_y, sign_z, sign_w (xenos::TextureSign). Reported by AnotarSignosTextura once it is known
+    // what is done with them.
+    const uint32_t signos = (f[0] >> 2) & 0xFF;
     const uint32_t swizzle = (f[3] >> 1) & 0xFFF;
     const uint32_t base = (f[1] >> 12) << 12;
     if (!cubo && !volumen) {
       if (const ImagenNativa* resuelta = contexto_->TexturaResuelta(base & 0x1FFFFFFF)) {
+        AnotarSignosTextura(signos, f[1] & 0x3F, dimension, kSignosResuelta);
         // Without this the shadows flicker.
         // With nfsmw_nativo_inv_tamano_tex the shader takes 1/size from the shared constants, and this path
         // used to return without reporting the size: 0 was written and the tfetch offsets (the taps of the
@@ -8751,16 +8823,75 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     const uint32_t formato = f[1] & 0x3F;
     FormatoTextura tf;
     if (!FormatoTexturaDe(formato, tf)) {
+      AnotarSignosTextura(signos, formato, dimension, kSignosSinFormato);
       Avisar(400 + formato, "formato de textura todavia no soportado: se usa una vacia");
+      // XDroid360: which texture it is, a few times (a resolve target sampled at another address shows here).
+      if (avisos_formato_textura_ < 12) {
+        ++avisos_formato_textura_;
+        REXLOG_WARN("[nativo] C6: textura sin formato: {:08X} formato {} fetch {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}",
+                    base, formato, f[0], f[1], f[2], f[3], f[4], f[5]);
+      }
       return;
+    }
+    if (formato >= 27 && formato <= 29 && avisos_formato_textura_ < 12) {  // XDroid360: k_16*_EXPAND
+      ++avisos_formato_textura_;
+      REXLOG_INFO("[nativo] C6: textura EXPAND: {:08X} formato {} fetch {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}",
+                  base, formato, f[0], f[1], f[2], f[3], f[4], f[5]);
     }
     const uint32_t indice_bc = IndiceBc(tf.formato);
     const bool bc_cpu = indice_bc && bc_cpu_[indice_bc - 1];
     const auto formato_bc = static_cast<nfsmw::bc::Formato>(indice_bc);
     // Keep tf in the guest format for untiling, mip addresses and byte order.
-    const VkFormat formato_host = !bc_cpu ? tf.formato : indice_bc == 4 ? VK_FORMAT_R8_UNORM
+    VkFormat formato_host = !bc_cpu ? tf.formato : indice_bc == 4 ? VK_FORMAT_R8_UNORM
         : indice_bc == 5 ? VK_FORMAT_R8G8_UNORM : indice_bc == 1 && bc1_16_ ? VK_FORMAT_A1R5G5B5_UNORM_PACK16
         : VK_FORMAT_R8G8B8A8_UNORM;
+    /*
+     * xdroid360_texturas_gamma. With sign = gamma on x, y and z the console converts the sampled colour from
+     * its piecewise-linear gamma to linear. Here the image is created with the sRGB variant of its host format
+     * and the sampler does it: the sRGB curve is a close approximation of the console's PWL one, and it is
+     * decoded before filtering instead of after, which is the better of the two orders. The data uploaded is
+     * the same; only the format of the image and of its views changes, and the flag goes into the cache key.
+     *
+     * Only when x, y and z are all gamma and come from the colour channels, and w does not read a colour
+     * channel unless it is gamma too (an sRGB format decodes R, G and B and never A; a w with sign = gamma
+     * that reads the alpha stays linear). Host formats with an sRGB variant: R8G8B8A8 (k_8_8_8_8 and BC1-BC3
+     * converted on the CPU) and BC1-BC3. BC1 converted to A1R5G5B5 (nfsmw_nativo_bc1_16_bits) has none.
+     */
+    uint32_t camino_signos = kSignosMezcla;
+    if ((signos & 0x3F) == 0x3F) {
+      if (!texturas_gamma_) {
+        camino_signos = kSignosApagado;
+      } else if (volumen) {
+        camino_signos = kSignosVolumen;
+      } else {
+        bool color_del_color = tf.swizzle_host == kSwizzleRGBA;
+        for (uint32_t i = 0; i < 4; ++i) {
+          const uint32_t valor = (swizzle >> (i * 3)) & 0x7;
+          if (i < 3 ? valor == 3 : (valor < 3 && (signos >> 6) != 3)) {
+            color_del_color = false;
+          }
+        }
+        VkFormat formato_gamma = VK_FORMAT_UNDEFINED;
+        if (formato_host == VK_FORMAT_R8G8B8A8_UNORM) {
+          formato_gamma = gamma_ok_[0] ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_UNDEFINED;
+        } else if (formato_host == VK_FORMAT_BC1_RGBA_UNORM_BLOCK) {
+          formato_gamma = gamma_ok_[1] ? VK_FORMAT_BC1_RGBA_SRGB_BLOCK : VK_FORMAT_UNDEFINED;
+        } else if (formato_host == VK_FORMAT_BC2_UNORM_BLOCK) {
+          formato_gamma = gamma_ok_[2] ? VK_FORMAT_BC2_SRGB_BLOCK : VK_FORMAT_UNDEFINED;
+        } else if (formato_host == VK_FORMAT_BC3_UNORM_BLOCK) {
+          formato_gamma = gamma_ok_[3] ? VK_FORMAT_BC3_SRGB_BLOCK : VK_FORMAT_UNDEFINED;
+        }
+        if (!color_del_color) {
+          camino_signos = kSignosSwizzle;
+        } else if (formato_gamma == VK_FORMAT_UNDEFINED) {
+          camino_signos = kSignosSinSrgb;
+        } else {
+          camino_signos = kSignosGamma;
+          formato_host = formato_gamma;
+        }
+      }
+    }
+    const bool con_gamma = camino_signos == kSignosGamma;
     // size_2d: 13 + 13 bits; size_3d: 11 + 11 + 10 bits (xenos.h:1222-1233).
     const uint32_t ancho = volumen ? (f[2] & 0x7FF) + 1 : (f[2] & 0x1FFF) + 1;
     const uint32_t alto = volumen ? ((f[2] >> 11) & 0x7FF) + 1 : ((f[2] >> 13) & 0x1FFF) + 1;
@@ -8779,7 +8910,10 @@ class DibujosVulkanImpl final : public DibujosVulkan {
              ((bloques_y + 31) & ~uint32_t(31)) +
          4095) &
         ~uint64_t(4095);
-    const uint32_t claves[5] = {f[0] & 0xFFC003FC, f[1], f[2], (f[4] >> 2) & 0xFF, f[5] >> 9};
+    // Bit 8 of the fourth word: created as sRGB (the sign fields themselves are already in the first word, but
+    // the cvar can change with the texture alive).
+    const uint32_t claves[5] = {f[0] & 0xFFC003FC, f[1], f[2], ((f[4] >> 2) & 0xFF) | (con_gamma ? 0x100u : 0u),
+                                f[5] >> 9};
     const uint64_t clave = XXH3_64bits(claves, sizeof(claves));
 
     // Mip levels with the rules of GetSubresourcesFromFetchConstant (pipeline/texture/util.cpp:67-97): no
@@ -8858,6 +8992,8 @@ class DibujosVulkanImpl final : public DibujosVulkan {
                     caras[c]->ancho >= ancho && caras[c]->alto >= alto;
       }
       if (resueltas) {
+        // Resolved faces: a UNORM cubemap as always, whatever was decided above for the guest's data.
+        AnotarSignosTextura(signos, formato, dimension, con_gamma ? uint32_t(kSignosResuelta) : camino_signos);
         const uint64_t clave_resuelto = clave ^ 0x9E3779B97F4A7C15ull;
         Textura& textura = texturas_[clave_resuelto];
         if (textura.imagen.imagen == VK_NULL_HANDLE) {
@@ -8917,6 +9053,7 @@ class DibujosVulkanImpl final : public DibujosVulkan {
       }
     }
 
+    AnotarSignosTextura(signos, formato, dimension, camino_signos);
     Textura& textura = texturas_[clave];
     if (textura.imagen.imagen == VK_NULL_HANDLE) {
       // BC in Vulkan: the size is in whole blocks.
@@ -12417,6 +12554,7 @@ class DibujosVulkanImpl final : public DibujosVulkan {
   const VulkanDevice* dispositivo_;
   std::array<bool, 5> bc_cpu_{};
   bool bc1_16_ = false;  // nfsmw_nativo_bc1_16_bits
+  std::array<bool, 4> gamma_ok_{};  // xdroid360_texturas_gamma: R8G8B8A8_SRGB and BC1-BC3 sRGB can be sampled
   bool abanicos_a_listas_ = false;  // nfsmw_nativo_abanicos_a_listas
   const VulkanDevice::Functions& dfn_;
   VkDevice device_;
@@ -12807,6 +12945,7 @@ class DibujosVulkanImpl final : public DibujosVulkan {
   std::unordered_set<uint32_t> omitir_ps_;
   ListaNumeros omitir_vs_;  // XDroid360: xdroid360_diag_omitir_vs
   bool filtros_tfetch_ = true;  // XDroid360: xdroid360_filtros_tfetch, read once per frame
+  bool texturas_gamma_ = false;  // XDroid360: xdroid360_texturas_gamma, read once per frame
   ListaNumeros opaco_ps_;   // XDroid360: xdroid360_diag_opaco_ps
   uint32_t stencil_grabado_[2] = {};  // RB_STENCILREFMASK for front and back
   bool stencil_grabado_valido_ = false;
@@ -13215,6 +13354,8 @@ class DibujosVulkanImpl final : public DibujosVulkan {
   uint64_t creadas_en_direccion_vista_ = 0;
   uint64_t creadas_misma_forma_otra_clave_ = 0;
   std::unordered_map<uint32_t, uint32_t> creadas_por_direccion_;
+  uint32_t avisos_formato_textura_ = 0;  // XDroid360
+  std::set<uint32_t> avisos_signos_;  // XDroid360: AnotarSignosTextura, one line per combination
   std::unordered_map<uint64_t, uint64_t> clave_por_forma_;
   std::unordered_map<uint64_t, std::array<uint32_t, 5>> palabras_por_forma_;
   uint64_t claves_incoherentes_ = 0;  // texture key guard (PrepararTextura)

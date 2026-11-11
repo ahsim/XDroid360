@@ -40,6 +40,7 @@
 #include "nfsmw_nativo_captura.h"   // GuardarPng (nfsmw_volcado)
 
 #include "nfsmw_ajustes_graficos.h"
+#include "xdroid360_codificar_7e3_spv.h"  // SPIR-V of the 7e3 encode pass (xdroid360_alias_edram)
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -114,12 +115,23 @@ REXCVAR_DEFINE_BOOL(xdroid360_profundidad_inicial_cero, true, "NFSMW",
                     "instead of 1.0. Dragon Age resolves its shadow map once at boot with nothing drawn: at 1.0 "
                     "the meshes lit by shadowed lights came out fully lit next to unlit ones (bright blocks on "
                     "walls); at 0 they are in shadow, as on Xenia. false = 1.0, as before");
+REXCVAR_DEFINE_BOOL(xdroid360_copias_hdr, true, "NFSMW",
+                    "XDroid360: resolves to 2_10_10_10, 10_11_11, 16_16_16_16 and the half-float formats (State "
+                    "of Decay's HDR scene), into textures of those formats, converting with a blit. Exponent "
+                    "biases not applied yet. false = rejected as before (only 8_8_8_8)");
 REXCVAR_DEFINE_BOOL(xdroid360_borrado_d3d, true, "NFSMW",
                     "XDroid360: Direct3D's own depth clears (a rectangle in depth-only EDRAM mode, Z test "
                     "ALWAYS with writes, drawn with D3D's internal shaders the library does not have) done as "
                     "clears to RB_DEPTH_CLEAR of every depth target at that EDRAM base, whatever its pitch: "
                     "D3D clears the 1280x720 depth as 640 wide with 4x MSAA, the same EDRAM. false = dropped "
                     "as before");
+REXCVAR_DEFINE_INT32(xdroid360_borrado_d3d_vertices, 1, "NFSMW",
+                     "XDroid360: D3D's Clear rectangles that carry the clear values in their three vertices "
+                     "(x, y, z and a float color each, 21 words in vertex fetch 0; State of Decay's D3D leaves "
+                     "RB_DEPTH_CLEAR at 0). 0 = off: only RB_DEPTH_CLEAR, as before. 1 = the depth comes from "
+                     "the vertices when RB_DEPTH_CLEAR is 0, and a Clear drawn in color-and-depth mode clears "
+                     "the bound color targets to the vertices' color (and depth, if it writes it). 2 = the "
+                     "vertices' depth always");
 REXCVAR_DEFINE_INT32(xdroid360_borrado_d3d_color, 1, "NFSMW",
                      "XDroid360: whether D3D's depth-mode clears also clear the 8-bit color targets at the same "
                      "EDRAM base and width. 0 = never, 1 = always, 2 = only when the clear value is 0. The value "
@@ -127,6 +139,18 @@ REXCVAR_DEFINE_INT32(xdroid360_borrado_d3d_color, 1, "NFSMW",
                      "board with depth 1.0 (FFFFFF00), which has to come out as transparent white for the map to "
                      "show through the position layer")
     .range(0, 2);
+REXCVAR_DEFINE_BOOL(xdroid360_volcado_dibujos, false, "NFSMW",
+                    "XDroid360 (tests only), with nfsmw_volcado: the index of the dumped frame gets one line per "
+                    "draw (shaders, primitive, color mask, color targets, resolved textures sampled, whether it "
+                    "was recorded) and one per D3D Clear rectangle, in order between the copies");
+REXCVAR_DEFINE_BOOL(xdroid360_alias_edram, false, "NFSMW",
+                    "XDroid360: color targets of different formats at the same EDRAM base and pitch are one "
+                    "memory on the console; here each format is an image of its own. State of Decay draws "
+                    "its lights into a 2_10_10_10_FLOAT target and resolves the same memory declared as "
+                    "2_10_10_10, which read an image nobody drew. true = a resolve whose declared format is "
+                    "not the one last drawn at that base and pitch reads (and clears) the image last drawn "
+                    "there, converted by the copy's blit; and D3D's Clear rectangles clear every color image "
+                    "at the base and pitch. false = as before");
 REXCVAR_DEFINE_BOOL(xdroid360_recarga_edram, true, "NFSMW",
                     "XDroid360: the EDRAM reload idiom (Dragon Age: Origins' xenonreload after predicated "
                     "tiling) done as image copies: a rectangle-list draw whose second color target sits at "
@@ -909,6 +933,20 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
         dfn_.vkDestroyFramebuffer(device_, f.framebuffer, nullptr);
       }
     }
+    // The 7e3 encode pass (xdroid360_alias_edram); nothing of it exists unless it was used.
+    for (auto& [vista, framebuffer] : framebuffers_7e3_) {
+      if (framebuffer != VK_NULL_HANDLE) dfn_.vkDestroyFramebuffer(device_, framebuffer, nullptr);
+    }
+    framebuffers_7e3_.clear();
+    if (pipeline_7e3_ != VK_NULL_HANDLE) dfn_.vkDestroyPipeline(device_, pipeline_7e3_, nullptr);
+    if (layout_pipeline_7e3_ != VK_NULL_HANDLE)
+      dfn_.vkDestroyPipelineLayout(device_, layout_pipeline_7e3_, nullptr);
+    if (pool_descriptores_7e3_ != VK_NULL_HANDLE)
+      dfn_.vkDestroyDescriptorPool(device_, pool_descriptores_7e3_, nullptr);
+    if (layout_descriptores_7e3_ != VK_NULL_HANDLE)
+      dfn_.vkDestroyDescriptorSetLayout(device_, layout_descriptores_7e3_, nullptr);
+    if (sampler_7e3_ != VK_NULL_HANDLE) dfn_.vkDestroySampler(device_, sampler_7e3_, nullptr);
+    if (render_pass_7e3_ != VK_NULL_HANDLE) dfn_.vkDestroyRenderPass(device_, render_pass_7e3_, nullptr);
     if (pipeline_ != VK_NULL_HANDLE) dfn_.vkDestroyPipeline(device_, pipeline_, nullptr);
     for (VkPipeline p : pipelines_rampa_) {
       if (p != VK_NULL_HANDLE) dfn_.vkDestroyPipeline(device_, p, nullptr);
@@ -1485,6 +1523,30 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     if (!destino_render) {
       return false;
     }
+    // The substituted image is a 2_10_10_10_FLOAT target kept as half floats (see codificar_7e3 below).
+    bool alias_7e3 = false;
+    if (REXCVAR_GET(xdroid360_alias_edram)) {
+      // The same EDRAM memory was last drawn in another format: that image has what the console would copy.
+      const auto ultimo = ultimo_dibujado_.find((uint64_t(info_color & 0xFFF) << 20) | pitch);
+      if (ultimo != ultimo_dibujado_.end() &&
+          ultimo->second != ClaveDestino(info_color & 0xFFF, formato_color, pitch)) {
+        const auto alias = destinos_.find(ultimo->second);
+        if (alias != destinos_.end() && alias->second.imagen != VK_NULL_HANDLE) {
+          const uint32_t formato_alias = uint32_t(ultimo->second >> 16) & 0xF;
+          const uint32_t combinacion = 0x20000000u | ((info_color & 0xFFF) << 12) | (formato_color << 8) |
+                                       (formato_alias << 4) | ((reg.rb_copy_dest_info >> 7) & 0xF);
+          if (avisados_.size() < 256 && avisados_.insert(combinacion).second) {
+            REXLOG_INFO("[nativo] C2 alias de EDRAM: copia de la base {:03X} pitch {} declarada con el formato {}, "
+                        "pero lo ultimo dibujado alli tiene el formato {}: se copia esa imagen (a una textura de "
+                        "formato {}, RB_COPY_DEST_INFO {:08X}, RB_COLOR_INFO {:08X})",
+                        info_color & 0xFFF, pitch, formato_color, formato_alias,
+                        (reg.rb_copy_dest_info >> 7) & 0x3F, reg.rb_copy_dest_info, info_color);
+          }
+          destino_render = &alias->second;
+          alias_7e3 = formato_alias == 3 && destino_render->formato == VK_FORMAT_R16G16B16A16_SFLOAT;
+        }
+      }
+    }
     // The game has just said which area of this render target matters to it. It is the data RestaurarContenido
     // uses to stop copying the bottom rows that nobody draws or reads (the scene render target is created
     // 1280x1280 to draw 1280x720).
@@ -1493,6 +1555,15 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     uint32_t base_resuelta = 0;
     Resuelta* resuelta = nullptr;
     uint32_t dx = 0, dy = 0;
+    // xdroid360_alias_edram: a 2_10_10_10_FLOAT target resolved as k_2_10_10_10. The console copies the raw
+    // 7e3 bits and the game's shaders decode them (floor = exponent, frac = mantissa of the sampled value
+    // times 8). The texture is kept as half floats and written by the encode pass (Codificar7e3) with
+    // code * 8 / 1023 per RGB channel, instead of the clamped linear values the blit left.
+    bool codificar_7e3 = false;
+    // A 2_10_10_10_FLOAT target (half floats here) copied to a half float texture: the console's target
+    // cannot hold more than 31.875, ours can (water glints of several thousand), and the bloom built from
+    // the copy washed the whole frame out. The copy goes through the same pass, which only clamps.
+    bool limitar_7e3 = false;
     if (copiar) {
       const uint32_t info_destino = reg.rb_copy_dest_info;
       const uint32_t formato_destino = (info_destino >> 7) & 0x3F;
@@ -1508,21 +1579,70 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
                       formato_color, sesgo_color, formato_destino, sesgo_copia);
         }
       }
+      // XDroid360: the copy's host format. Most Wanted and Dragon Age only resolve to 8_8_8_8; State of
+      // Decay's HDR scene also goes to 2_10_10_10, 10_11_11, 16_16_16_16 and the half floats. The texture
+      // keeps the format its draws sample it as (FormatoTexturaDe); 10_11_11, which has no sampling format
+      // there, goes to half floats. A render target in another format is converted by the blit below.
+      // Exponent biases are not applied yet (logged above).
+      VkFormat formato_copia = VK_FORMAT_UNDEFINED;
+      uint32_t log2_bytes_copia = 2;
+      switch (formato_destino) {
+        case uint32_t(xenos::ColorFormat::k_8_8_8_8):
+        case uint32_t(xenos::ColorFormat::k_8_8_8_8_A):
+        case uint32_t(xenos::ColorFormat::k_8_8_8_8_AS_16_16_16_16):
+          formato_copia = kFormatoColor;
+          break;
+        case 7:  // k_2_10_10_10
+          formato_copia = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+          if (alias_7e3) {
+            // Still 4 bytes per texel for the guest (log2_bytes_copia stays 2).
+            formato_copia = VK_FORMAT_R16G16B16A16_SFLOAT;
+            codificar_7e3 = true;
+          }
+          break;
+        case 16:  // k_10_11_11
+          formato_copia = VK_FORMAT_R16G16B16A16_SFLOAT;
+          break;
+        case 31:  // k_16_16_FLOAT
+          formato_copia = VK_FORMAT_R16G16_SFLOAT;
+          break;
+        case 26:  // k_16_16_16_16
+          // From a float target (State of Decay's HDR scene, with a copy exponent bias the texture's fetch
+          // takes back) the texture stays half float: a normalized one clamped at 1.0 what the console
+          // keeps up to 32, and the bright pass of the bloom found nothing above its threshold.
+          formato_copia = REXCVAR_GET(xdroid360_alias_edram) &&
+                                  destino_render->formato == VK_FORMAT_R16G16B16A16_SFLOAT
+                              ? VK_FORMAT_R16G16B16A16_SFLOAT
+                              : VK_FORMAT_R16G16B16A16_UNORM;
+          log2_bytes_copia = 3;
+          break;
+        case 32:  // k_16_16_16_16_FLOAT
+          formato_copia = VK_FORMAT_R16G16B16A16_SFLOAT;
+          log2_bytes_copia = 3;
+          break;
+        default:
+          break;
+      }
+      if (!REXCVAR_GET(xdroid360_copias_hdr) && formato_copia != kFormatoColor) {
+        formato_copia = VK_FORMAT_UNDEFINED;
+      }
+      limitar_7e3 = REXCVAR_GET(xdroid360_alias_edram) && !codificar_7e3 &&
+                    formato_copia == VK_FORMAT_R16G16B16A16_SFLOAT &&
+                    destino_render->formato == VK_FORMAT_R16G16B16A16_SFLOAT &&
+                    (alias_7e3 || formato_color == 3 || formato_color == 12);
       if ((info_destino >> 3) & 0x1) {
         Rechazar(3, "copia a textura 3D o array: todavia no");
-      } else if (formato_destino != uint32_t(xenos::ColorFormat::k_8_8_8_8) &&
-                 formato_destino != uint32_t(xenos::ColorFormat::k_8_8_8_8_A) &&
-                 formato_destino != uint32_t(xenos::ColorFormat::k_8_8_8_8_AS_16_16_16_16)) {
+      } else if (formato_copia == VK_FORMAT_UNDEFINED) {
         Rechazar(200 + formato_destino, "formato de copia todavia no soportado");
       } else {
         const uint32_t pitch_destino = reg.rb_copy_dest_pitch & 0x3FFF;
         const uint32_t alto_destino = (reg.rb_copy_dest_pitch >> 16) & 0x3FFF;
-        // 4 bytes per texel: base in multiples of 32 texels (GetResolveInfo).
+        // Base in multiples of 32 texels (GetResolveInfo).
         const uint32_t base_x = uint32_t(x0) & ~uint32_t(31);
         const uint32_t base_y = uint32_t(y0) & ~uint32_t(31);
         uint32_t base =
             reg.rb_copy_dest_base +
-            uint32_t(DesplazamientoMosaico2D(int32_t(base_x), int32_t(base_y), pitch_destino, 2));
+            uint32_t(DesplazamientoMosaico2D(int32_t(base_x), int32_t(base_y), pitch_destino, log2_bytes_copia));
         dx = uint32_t(x0) - base_x;
         dy = uint32_t(y0) - base_y;
         // The copy register only carries the pitch, a multiple of 32 texels: a texture 600 wide has a pitch of
@@ -1537,9 +1657,11 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
                 ? ancho_copia
                 : pitch_destino;
         uint32_t ancho_resuelta = ancho_imagen, alto_resuelta = alto_destino;
-        UnirTesela(base, pitch_destino, kFormatoColor, dy, ancho_resuelta, alto_resuelta);
+        if (log2_bytes_copia == 2) {  // UnirTesela counts 4 bytes per texel
+          UnirTesela(base, pitch_destino, formato_copia, dy, ancho_resuelta, alto_resuelta);
+        }
         resuelta = ObtenerResuelta(base & 0x1FFFFFFF, ancho_resuelta, alto_resuelta, formato_destino,
-                                   (info_destino >> 24) & 0x1);
+                                   (info_destino >> 24) & 0x1, formato_copia);
         base_resuelta = base & 0x1FFFFFFF;
         if (resuelta) {
           AnotarCopia(base & 0x1FFFFFFF, pitch_destino, alto_destino, dibujos_antes);
@@ -1591,7 +1713,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
       // It only shrinks when the scene really has to be reduced (by a factor of 1.25 or more) and both images
       // are color: vkCmdBlitImage with a linear filter on a depth target is not valid and brings the process
       // down. Mismatches of a few pixels (320x184 -> 320x180) are still cropped as always.
-      const bool encoger = blit_ != nullptr && cabe_ancho && cabe_alto &&
+      const bool encoger = blit_ != nullptr && cabe_ancho && cabe_alto && !codificar_7e3 &&
                            destino_render->formato == kFormatoColor &&
                            resuelta->imagen.formato == kFormatoColor &&
                            (pedido_ancho * 4 >= cabe_ancho * 5 || pedido_alto * 4 >= cabe_alto * 5);
@@ -1636,7 +1758,8 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
          * 17,350 restores, almost one for one; the game draws on top again without clearing and the copy is
          * paid anyway, only later and with two operations instead of one.
          */
-        if (entero_color && borrar_color && ResolverSinCopia() &&
+        // Not with codificar_7e3: both images are half floats, but the texture holds another encoding.
+        if (entero_color && borrar_color && ResolverSinCopia() && !codificar_7e3 && !limitar_7e3 &&
             REXCVAR_GET(nfsmw_nativo_intercambiar_color)) {
           // With x0 = y0 = 0 the tiling offset is 0, so the address is the base as is.
           if (IntercambiarConResuelta(*destino_render, *resuelta, reg.rb_copy_dest_base & 0x1FFFFFFF)) {
@@ -1656,7 +1779,16 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
         // reads, it is deferred.
         ResolverFrontalAnterior(base_resuelta,
                                 dx == 0 && dy == 0 && ancho == resuelta->imagen.ancho && alto == resuelta->imagen.alto);
-        if (destino_render->formato != resuelta->imagen.formato) {
+        if ((codificar_7e3 || limitar_7e3) && resuelta->imagen.formato == VK_FORMAT_R16G16B16A16_SFLOAT &&
+            Codificar7e3(*destino_render, resuelta->imagen, x0, y0, dx, dy, ancho, alto, base_resuelta,
+                         limitar_7e3)) {
+          // The 7e3 codes, written by a pass instead of the blit or the copy below (which stay as the
+          // fallback if the pass could not be created or recorded).
+          ++copias_;
+          AnotarCopia(ancho, alto);
+          ResueltaEscrita(base_resuelta, uint64_t(ancho) * alto);
+          LeerResuelta(reg, *resuelta, x0, y0, dx, dy, ancho, alto);
+        } else if (destino_render->formato != resuelta->imagen.formato) {
           // A render target in another host format than its texture (NFS Carbon's half float scene resolved to
           // 8_8_8_8): vkCmdCopyImage needs compatible formats, a 1:1 blit converts.
           if (blit_ != nullptr) {
@@ -1752,6 +1884,356 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     }
     if (((control >> 9) & 0x1) && borrar_profundidad_) {
       BorrarProfundidad(reg, pitch);
+    }
+    return true;
+  }
+
+  // --- xdroid360_alias_edram: the 7e3 encode pass ---------------------------------------------------------
+  // Objects of the pass, created the first time it is needed. false if they could not be created (logged
+  // once; the resolve then goes through the usual copy or blit).
+  bool PrepararCodificar7e3() {
+    if (pipeline_7e3_ != VK_NULL_HANDLE) {
+      return true;
+    }
+    if (codificar_7e3_fallido_) {
+      return false;
+    }
+    const auto fallar = [this](const char* que) {
+      codificar_7e3_fallido_ = true;
+      REXLOG_WARN("[nativo] C2 codificar 7e3: no se pudo crear {}; la copia de 2_10_10_10_FLOAT a 2_10_10_10 "
+                  "sigue con la copia de siempre (valores lineales, no los bits 7e3)",
+                  que);
+      return false;
+    };
+    VkFormatProperties propiedades{};
+    dispositivo_->vulkan_instance()->functions().vkGetPhysicalDeviceFormatProperties(
+        dispositivo_->physical_device(), VK_FORMAT_R16G16B16A16_SFLOAT, &propiedades);
+    if (!(propiedades.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ||
+        !(propiedades.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
+      return fallar("el pase (R16G16B16A16_SFLOAT no sirve de adjunto o de textura)");
+    }
+    if (render_pass_7e3_ == VK_NULL_HANDLE) {
+      // The image stays in GENERAL, like everything else here; the content outside the rectangle is kept.
+      VkAttachmentDescription adjunto{};
+      adjunto.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+      adjunto.samples = VK_SAMPLE_COUNT_1_BIT;
+      adjunto.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+      adjunto.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      adjunto.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      adjunto.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      adjunto.initialLayout = VK_IMAGE_LAYOUT_GENERAL;
+      adjunto.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+      VkAttachmentReference referencia{0, VK_IMAGE_LAYOUT_GENERAL};
+      VkSubpassDescription subpase{};
+      subpase.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+      subpase.colorAttachmentCount = 1;
+      subpase.pColorAttachments = &referencia;
+      VkRenderPassCreateInfo info_rp{};
+      info_rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+      info_rp.attachmentCount = 1;
+      info_rp.pAttachments = &adjunto;
+      info_rp.subpassCount = 1;
+      info_rp.pSubpasses = &subpase;
+      if (dfn_.vkCreateRenderPass(device_, &info_rp, nullptr, &render_pass_7e3_) != VK_SUCCESS) {
+        render_pass_7e3_ = VK_NULL_HANDLE;
+        return fallar("el pase");
+      }
+    }
+    if (sampler_7e3_ == VK_NULL_HANDLE) {
+      VkSamplerCreateInfo info_sampler{};
+      info_sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+      info_sampler.magFilter = VK_FILTER_NEAREST;
+      info_sampler.minFilter = VK_FILTER_NEAREST;
+      info_sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+      info_sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      info_sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      info_sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      if (dfn_.vkCreateSampler(device_, &info_sampler, nullptr, &sampler_7e3_) != VK_SUCCESS) {
+        sampler_7e3_ = VK_NULL_HANDLE;
+        return fallar("el sampler");
+      }
+    }
+    if (layout_descriptores_7e3_ == VK_NULL_HANDLE) {
+      VkDescriptorSetLayoutBinding enlace{};
+      enlace.binding = 0;
+      enlace.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      enlace.descriptorCount = 1;
+      enlace.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+      enlace.pImmutableSamplers = &sampler_7e3_;
+      VkDescriptorSetLayoutCreateInfo info_layout{};
+      info_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+      info_layout.bindingCount = 1;
+      info_layout.pBindings = &enlace;
+      if (dfn_.vkCreateDescriptorSetLayout(device_, &info_layout, nullptr, &layout_descriptores_7e3_) !=
+          VK_SUCCESS) {
+        layout_descriptores_7e3_ = VK_NULL_HANDLE;
+        return fallar("el layout de descriptores");
+      }
+    }
+    if (layout_pipeline_7e3_ == VK_NULL_HANDLE) {
+      VkPushConstantRange rango{};
+      rango.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+      rango.offset = 0;
+      rango.size = 4 * sizeof(int32_t);  // ivec2 desplazamiento, int modo, padding
+      VkPipelineLayoutCreateInfo info_pipeline_layout{};
+      info_pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+      info_pipeline_layout.setLayoutCount = 1;
+      info_pipeline_layout.pSetLayouts = &layout_descriptores_7e3_;
+      info_pipeline_layout.pushConstantRangeCount = 1;
+      info_pipeline_layout.pPushConstantRanges = &rango;
+      if (dfn_.vkCreatePipelineLayout(device_, &info_pipeline_layout, nullptr, &layout_pipeline_7e3_) !=
+          VK_SUCCESS) {
+        layout_pipeline_7e3_ = VK_NULL_HANDLE;
+        return fallar("el layout del pipeline");
+      }
+    }
+    if (pool_descriptores_7e3_ == VK_NULL_HANDLE) {
+      // One set per source view. The sets of destroyed views are reused (OlvidarVista7e3), so the pool has no
+      // need to free them one by one.
+      VkDescriptorPoolSize tamano{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kDescriptores7e3};
+      VkDescriptorPoolCreateInfo info_pool{};
+      info_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+      info_pool.maxSets = kDescriptores7e3;
+      info_pool.poolSizeCount = 1;
+      info_pool.pPoolSizes = &tamano;
+      if (dfn_.vkCreateDescriptorPool(device_, &info_pool, nullptr, &pool_descriptores_7e3_) != VK_SUCCESS) {
+        pool_descriptores_7e3_ = VK_NULL_HANDLE;
+        return fallar("el pool de descriptores");
+      }
+    }
+    VkShaderModule vs = VK_NULL_HANDLE, fs = VK_NULL_HANDLE;
+    VkShaderModuleCreateInfo info_modulo{};
+    info_modulo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    info_modulo.codeSize = sizeof(shaders::xdroid360_codificar_7e3_vs);
+    info_modulo.pCode = shaders::xdroid360_codificar_7e3_vs;
+    if (dfn_.vkCreateShaderModule(device_, &info_modulo, nullptr, &vs) != VK_SUCCESS) {
+      return fallar("el shader de vertices");
+    }
+    info_modulo.codeSize = sizeof(shaders::xdroid360_codificar_7e3_ps);
+    info_modulo.pCode = shaders::xdroid360_codificar_7e3_ps;
+    if (dfn_.vkCreateShaderModule(device_, &info_modulo, nullptr, &fs) != VK_SUCCESS) {
+      dfn_.vkDestroyShaderModule(device_, vs, nullptr);
+      return fallar("el shader de pixeles");
+    }
+    VkPipelineShaderStageCreateInfo etapas[2]{};
+    etapas[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    etapas[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    etapas[0].module = vs;
+    etapas[0].pName = "main";
+    etapas[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    etapas[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    etapas[1].module = fs;
+    etapas[1].pName = "main";
+    VkPipelineVertexInputStateCreateInfo entrada{};
+    entrada.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    VkPipelineInputAssemblyStateCreateInfo ensamblado{};
+    ensamblado.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ensamblado.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;  // one triangle that covers the viewport
+    VkPipelineViewportStateCreateInfo vista{};
+    vista.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vista.viewportCount = 1;
+    vista.scissorCount = 1;
+    VkPipelineRasterizationStateCreateInfo rasterizado{};
+    rasterizado.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizado.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizado.cullMode = VK_CULL_MODE_NONE;
+    rasterizado.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizado.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo muestreo{};
+    muestreo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    muestreo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineColorBlendAttachmentState mezcla_adjunto{};
+    mezcla_adjunto.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                    VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkPipelineColorBlendStateCreateInfo mezcla{};
+    mezcla.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    mezcla.attachmentCount = 1;
+    mezcla.pAttachments = &mezcla_adjunto;
+    const VkDynamicState dinamicos[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dinamico{};
+    dinamico.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dinamico.dynamicStateCount = 2;
+    dinamico.pDynamicStates = dinamicos;
+    VkGraphicsPipelineCreateInfo info_pipeline{};
+    info_pipeline.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    info_pipeline.stageCount = 2;
+    info_pipeline.pStages = etapas;
+    info_pipeline.pVertexInputState = &entrada;
+    info_pipeline.pInputAssemblyState = &ensamblado;
+    info_pipeline.pViewportState = &vista;
+    info_pipeline.pRasterizationState = &rasterizado;
+    info_pipeline.pMultisampleState = &muestreo;
+    info_pipeline.pColorBlendState = &mezcla;
+    info_pipeline.pDynamicState = &dinamico;
+    info_pipeline.layout = layout_pipeline_7e3_;
+    info_pipeline.renderPass = render_pass_7e3_;
+    info_pipeline.basePipelineIndex = -1;
+    const VkResult creado =
+        dfn_.vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &info_pipeline, nullptr, &pipeline_7e3_);
+    // The pipeline keeps what it needs of the modules.
+    dfn_.vkDestroyShaderModule(device_, vs, nullptr);
+    dfn_.vkDestroyShaderModule(device_, fs, nullptr);
+    if (creado != VK_SUCCESS) {
+      pipeline_7e3_ = VK_NULL_HANDLE;
+      return fallar("el pipeline");
+    }
+    return true;
+  }
+
+  // A view is about to be destroyed (Destruir, with the GPU idle for that image): the encode pass's
+  // framebuffer on it is destroyed and its descriptor set goes back to the spare ones, so a new view that
+  // gets the same handle never finds them.
+  void OlvidarVista7e3(VkImageView vista) {
+    if (vista == VK_NULL_HANDLE || (framebuffers_7e3_.empty() && descriptores_7e3_.empty())) {
+      return;
+    }
+    const auto f = framebuffers_7e3_.find(vista);
+    if (f != framebuffers_7e3_.end()) {
+      if (f->second != VK_NULL_HANDLE) dfn_.vkDestroyFramebuffer(device_, f->second, nullptr);
+      framebuffers_7e3_.erase(f);
+    }
+    const auto d = descriptores_7e3_.find(vista);
+    if (d != descriptores_7e3_.end()) {
+      descriptores_7e3_libres_.push_back(d->second);
+      descriptores_7e3_.erase(d);
+    }
+  }
+
+  // Writes the 7e3 codes of the `ancho` x `alto` rectangle at (x0, y0) of `origen` (a 2_10_10_10_FLOAT target
+  // kept as half floats) into `destino` at (dx, dy), as the value the game's shaders expect to sample
+  // (xdroid360_codificar_7e3.frag). Both images in GENERAL, both half floats. false if it could not: nothing
+  // was recorded and the caller copies as always.
+  bool Codificar7e3(const Imagen& origen, const Imagen& destino, int32_t x0, int32_t y0, uint32_t dx,
+                    uint32_t dy, uint32_t ancho, uint32_t alto, uint32_t base, bool solo_limitar = false) {
+    if (origen.vista == VK_NULL_HANDLE || destino.vista == VK_NULL_HANDLE || origen.imagen == destino.imagen ||
+        x0 < 0 || y0 < 0 || !PrepararCodificar7e3()) {
+      return false;
+    }
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    {
+      const auto f = framebuffers_7e3_.find(destino.vista);
+      if (f != framebuffers_7e3_.end()) {
+        framebuffer = f->second;
+      } else {
+        VkFramebufferCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        info.renderPass = render_pass_7e3_;
+        info.attachmentCount = 1;
+        info.pAttachments = &destino.vista;
+        info.width = destino.ancho;
+        info.height = destino.alto;
+        info.layers = 1;
+        if (dfn_.vkCreateFramebuffer(device_, &info, nullptr, &framebuffer) != VK_SUCCESS) {
+          framebuffer = VK_NULL_HANDLE;
+        } else {
+          framebuffers_7e3_.emplace(destino.vista, framebuffer);
+        }
+      }
+    }
+    VkDescriptorSet descriptores = VK_NULL_HANDLE;
+    if (framebuffer != VK_NULL_HANDLE) {
+      const auto d = descriptores_7e3_.find(origen.vista);
+      if (d != descriptores_7e3_.end()) {
+        descriptores = d->second;
+      } else {
+        if (!descriptores_7e3_libres_.empty()) {
+          // Its view was destroyed with the GPU idle, so no recorded or submitted work uses this set.
+          descriptores = descriptores_7e3_libres_.back();
+          descriptores_7e3_libres_.pop_back();
+        } else if (descriptores_7e3_.size() < kDescriptores7e3) {
+          VkDescriptorSetAllocateInfo reserva{};
+          reserva.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          reserva.descriptorPool = pool_descriptores_7e3_;
+          reserva.descriptorSetCount = 1;
+          reserva.pSetLayouts = &layout_descriptores_7e3_;
+          if (dfn_.vkAllocateDescriptorSets(device_, &reserva, &descriptores) != VK_SUCCESS) {
+            descriptores = VK_NULL_HANDLE;
+          }
+        }
+        if (descriptores != VK_NULL_HANDLE) {
+          VkDescriptorImageInfo info_imagen{};
+          info_imagen.imageView = origen.vista;
+          info_imagen.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+          VkWriteDescriptorSet escritura{};
+          escritura.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+          escritura.dstSet = descriptores;
+          escritura.dstBinding = 0;
+          escritura.descriptorCount = 1;
+          escritura.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+          escritura.pImageInfo = &info_imagen;
+          dfn_.vkUpdateDescriptorSets(device_, 1, &escritura, 0, nullptr);
+          descriptores_7e3_.emplace(origen.vista, descriptores);
+        }
+      }
+    }
+    if (framebuffer == VK_NULL_HANDLE || descriptores == VK_NULL_HANDLE) {
+      if (!codificar_7e3_sin_sitio_avisado_) {
+        codificar_7e3_sin_sitio_avisado_ = true;
+        REXLOG_WARN("[nativo] C2 codificar 7e3: sin {} para la copia a {:08X} ({} origenes, {} destinos): esa "
+                    "copia va como siempre (valores lineales)",
+                    framebuffer == VK_NULL_HANDLE ? "framebuffer" : "descriptores", base,
+                    descriptores_7e3_.size(), framebuffers_7e3_.size());
+      }
+      return false;
+    }
+    if (dibujos_) {
+      dibujos_->TerminarPase();  // a pass cannot be opened inside another
+    }
+    const VkCommandBuffer comandos = comandos_trabajo_;
+    BarreraTotal(dfn_, comandos);  // nfsmw_nativo_barrera_total (iOS)
+    // The source was written by draws or by a clear or a copy; the texture, by earlier copies, and draws may
+    // have sampled it. All of that before this pass samples the one and writes the other.
+    VkMemoryBarrier barrera{};
+    barrera.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrera.srcAccessMask =
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    barrera.dstAccessMask =
+        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dfn_.vkCmdPipelineBarrier(comandos,
+                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                  VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                              0, 1, &barrera, 0, nullptr, 0, nullptr);
+    VkRenderPassBeginInfo pase{};
+    pase.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    pase.renderPass = render_pass_7e3_;
+    pase.framebuffer = framebuffer;
+    pase.renderArea = {{int32_t(dx), int32_t(dy)}, {ancho, alto}};
+    dfn_.vkCmdBeginRenderPass(comandos, &pase, VK_SUBPASS_CONTENTS_INLINE);
+    const VkViewport viewport{float(dx), float(dy), float(ancho), float(alto), 0.0f, 1.0f};
+    dfn_.vkCmdSetViewport(comandos, 0, 1, &viewport);
+    dfn_.vkCmdSetScissor(comandos, 0, 1, &pase.renderArea);
+    dfn_.vkCmdBindPipeline(comandos, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_7e3_);
+    dfn_.vkCmdBindDescriptorSets(comandos, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_pipeline_7e3_, 0, 1,
+                                 &descriptores, 0, nullptr);
+    // Source texel - destination pixel, and the mode: 0 = the 7e3 codes, 1 = the values clamped to 31.875.
+    const int32_t desplazamiento[4] = {x0 - int32_t(dx), y0 - int32_t(dy), solo_limitar ? 1 : 0, 0};
+    dfn_.vkCmdPushConstants(comandos, layout_pipeline_7e3_, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                            sizeof(desplazamiento), desplazamiento);
+    dfn_.vkCmdDraw(comandos, 3, 1, 0, 0);
+    dfn_.vkCmdEndRenderPass(comandos);
+    // And before whatever comes next: the clear of the source right after this resolve, the draws that sample
+    // the texture, later copies.
+    barrera.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    barrera.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
+                            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dfn_.vkCmdPipelineBarrier(comandos,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                              0, 1, &barrera, 0, nullptr, 0, nullptr);
+    BarreraTotal(dfn_, comandos);  // nfsmw_nativo_barrera_total (iOS)
+    // This pass bound its own pipeline, descriptor set, viewport and scissor in the work buffer. The draws
+    // remember what they bound per command generation (DibujosVulkan::Dibujar, grabacion_generacion_): a new
+    // generation makes the next draw bind and set everything again, as in a new buffer.
+    ++generacion_comandos_;
+    if (!codificar_7e3_anotado_) {
+      codificar_7e3_anotado_ = true;
+      REXLOG_INFO("[nativo] C2 codificar 7e3: la copia de un destino 2_10_10_10_FLOAT de {}x{} a la textura "
+                  "2_10_10_10 en {:08X} ({}x{}) escribe los codigos 7e3 con un pase (rectangulo {}x{} desde "
+                  "{},{} a {},{})",
+                  origen.ancho, origen.alto, base, destino.ancho, destino.alto, ancho, alto, x0, y0, dx, dy);
     }
     return true;
   }
@@ -2951,6 +3433,32 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     if (volcar) {
       VolcarDestinosDe(peticion, hecho);
     }
+    if (volcado_activo_ && REXCVAR_GET(xdroid360_volcado_dibujos) && peticion.registros) {
+      const uint32_t* r = peticion.registros;
+      std::string texturas;
+      if (peticion.ps) {
+        for (const SamplerShader& s : peticion.ps->samplers) {
+          if (s.registro >= 32) {
+            continue;
+          }
+          const uint32_t* f = r + 0x4800u + uint32_t(s.registro) * 6;
+          const uint32_t base = ((f[1] >> 12) << 12) & 0x1FFFFFFF;
+          if (resueltas_.count(base)) {
+            // With the fetch constant's words 0 and 3 (sign and clamp modes; swizzle, exponent adjust, filters).
+            texturas += fmt::format(" t{}={:08X}(f0 {:08X} f3 {:08X})", s.registro, base, f[0], f[3]);
+          }
+        }
+      }
+      // RB_COLORCONTROL (alpha test), RB_ALPHA_REF, the window scissor and PA_SU_SC_MODE_CNTL (culling).
+      volcado_indice_ += fmt::format(
+          "    dibujo PS n{} VS n{} tipo {} modo {} mascara {:04X} pitch {} rt0 {:08X} rt1 {:08X} prof {:08X} "
+          "control_prof {:08X} mezcla0 {:08X} control_color {:08X} ref_alfa {:08X} tijera {:08X}-{:08X} sc "
+          "{:08X}{}{}\n",
+          peticion.ps ? int32_t(peticion.ps->numero) : -1, peticion.vs ? int32_t(peticion.vs->numero) : -1,
+          r[0x21FC] & 0x3F, r[0x2208] & 0x7, r[0x2104] & 0xFFFF, r[0x2000] & 0x3FFF, r[0x2001], r[0x2003],
+          r[0x2002], r[0x2200], r[0x2201], r[0x2202], r[0x210E], r[0x2081], r[0x2082], r[0x2205], texturas,
+          hecho ? "" : " NO DIBUJADO");
+    }
     return hecho;
   }
 
@@ -2965,13 +3473,49 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
   bool BorradoProfundidadD3d(const uint32_t* r) override {
     constexpr uint32_t kSurfaceInfo = 0x2000, kDepthInfo = 0x2002, kDepthControl = 0x2200, kModeControl = 0x2208;
     constexpr uint32_t kDepthClear = 0x231D, kDrawInitiator = 0x21FC;
-    if (!r || !REXCVAR_GET(xdroid360_borrado_d3d) || (r[kDrawInitiator] & 0x3F) != 8 ||
-        (r[kModeControl] & 0x7) != 5) {
+    if (!r || !REXCVAR_GET(xdroid360_borrado_d3d) || (r[kDrawInitiator] & 0x3F) != 8) {
       return false;
     }
+    const uint32_t modo = r[kModeControl] & 0x7;
     const uint32_t control = r[kDepthControl];
     const bool z_siempre = ((control >> 1) & 0x1) && ((control >> 2) & 0x1) && ((control >> 4) & 0x7) == 7;
-    if (!z_siempre) {
+    // xdroid360_borrado_d3d_vertices: the clear values in the rectangle's own vertices. State of Decay's
+    // D3D draws its Clear with three vertices of seven floats in vertex fetch 0 (x, y, z, then the color)
+    // and leaves RB_DEPTH_CLEAR at 0.
+    float z_vertices = 0.0f;
+    float color_vertices[4] = {};
+    bool con_vertices = false;
+    const int32_t modo_vertices = REXCVAR_GET(xdroid360_borrado_d3d_vertices);
+    if (modo_vertices != 0 && memoria_) {
+      const uint32_t fetch0 = r[0x4800], fetch1 = r[0x4801];
+      if ((fetch0 & 0x3) == 3 && ((fetch1 >> 2) & 0xFFFFFF) == 21 && (fetch0 & 0x1FFFFFFC) != 0) {
+        const uint8_t* vertices = memoria_->TranslatePhysical(fetch0 & 0x1FFFFFFC);
+        const uint32_t endian = fetch1 & 0x3;
+        const auto flotante = [&](uint32_t palabra) {
+          uint32_t v;
+          std::memcpy(&v, vertices + palabra * 4, 4);
+          if (endian == 2) {  // k8in32
+            v = __builtin_bswap32(v);
+          } else if (endian == 1) {  // k8in16
+            v = ((v & 0x00FF00FFu) << 8) | ((v >> 8) & 0x00FF00FFu);
+          } else if (endian == 3) {  // k16in32
+            v = (v << 16) | (v >> 16);
+          }
+          float f;
+          std::memcpy(&f, &v, 4);
+          return f;
+        };
+        z_vertices = flotante(2);
+        for (uint32_t c = 0; c < 4; ++c) {
+          color_vertices[c] = flotante(3 + c);
+        }
+        con_vertices = z_vertices >= 0.0f && z_vertices <= 1.0f;
+      }
+    }
+    if (modo == 4 && con_vertices) {
+      return BorradoD3dConVertices(r, z_vertices, color_vertices, z_siempre);
+    }
+    if (modo != 5 || !z_siempre) {
       return false;
     }
     const uint32_t info = r[kDepthInfo];
@@ -2979,6 +3523,9 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     RegistrosCopia reg;
     reg.rb_depth_info = info;
     reg.rb_depth_clear = r[kDepthClear];
+    if (con_vertices && (modo_vertices == 2 || reg.rb_depth_clear == 0)) {
+      reg.rb_depth_clear = (Profundidad24(z_vertices) << 8) | (reg.rb_depth_clear & 0xFF);
+    }
     // The widths this clear covers: its own pitch and, with 4x MSAA (2x2 samples per pixel), twice that,
     // the same EDRAM seen at one sample per pixel. Only images of those widths are cleared: a clear of the
     // 160x160 portrait and minimap board (80 wide at 4x) must not touch the 1280-wide scene, nor the
@@ -3050,6 +3597,103 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
                   modo_color);
     }
     return true;
+  }
+
+  // A depth of 0..1 as 24 bits. In double: 1.0f * 16777215 + 0.5 rounds up to 2^24 in single precision,
+  // which shifted into RB_DEPTH_CLEAR's layout is 0.
+  static uint32_t Profundidad24(float z) {
+    const double v = double(std::clamp(z, 0.0f, 1.0f)) * 16777215.0 + 0.5;
+    return uint32_t(std::min(v, 16777215.0));
+  }
+
+  // xdroid360_borrado_d3d_vertices: D3D's Clear drawn in color-and-depth mode (State of Decay): the color
+  // targets its color mask enables are cleared to the vertices' color; the depth target to the vertices'
+  // z if the draw writes depth with Z ALWAYS, and its stencil to the reference if stencil is on.
+  bool BorradoD3dConVertices(const uint32_t* r, float z, const float* color, bool z_siempre) {
+    constexpr uint32_t kSurfaceInfo = 0x2000, kDepthInfo = 0x2002, kDepthControl = 0x2200, kColorMask = 0x2104;
+    constexpr uint32_t kStencilRefMask = 0x210D;
+    constexpr uint32_t kColorInfo[4] = {0x2001, 0x2003, 0x2004, 0x2005};
+    const uint32_t pitch = r[kSurfaceInfo] & 0x3FFF;
+    if (!pitch) {
+      return false;
+    }
+    if (dibujos_) {
+      dibujos_->TerminarPase();  // a clear cannot go inside a pass
+    }
+    uint32_t colores = 0;
+    for (uint32_t i = 0; i < 4; ++i) {
+      if (!((r[kColorMask] >> (i * 4)) & 0xF)) {
+        continue;
+      }
+      const uint32_t info_color = r[kColorInfo[i]];
+      const uint32_t formato = (info_color >> 16) & 0xF;
+      if (FormatoHostDestinoColor(formato) == VK_FORMAT_UNDEFINED) {
+        continue;
+      }
+      Imagen* destino = ObtenerDestino(info_color & 0xFFF, formato, pitch);
+      if (!destino || destino->imagen == VK_NULL_HANDLE || !Grabar()) {
+        continue;
+      }
+      Preparar(*destino);
+      AntesDeEscribirColor(*destino);
+      RotarFrontalAntesDeBorrar(*destino);
+      destino->contenido_invalido = false;
+      VkClearColorValue valor{};
+      for (uint32_t c = 0; c < 4; ++c) {
+        valor.float32[c] = color[c];
+      }
+      MarcarGpu(kGpuBorrados);
+      AntesDeTransferir();
+      dfn_.vkCmdClearColorImage(comandos_trabajo_, destino->imagen, VK_IMAGE_LAYOUT_GENERAL, &valor, 1,
+                                &kRangoColor);
+      OlvidarBorrado(*destino);
+      ++colores;
+      if (REXCVAR_GET(xdroid360_alias_edram)) {
+        // The other formats' images of the same EDRAM memory (float values: a normalized format clamps them).
+        const uint64_t clave_borrada = ClaveDestino(info_color & 0xFFF, formato, pitch);
+        for (auto& [clave, imagen] : destinos_) {
+          if (clave == clave_borrada || uint32_t(clave >> 20) != (info_color & 0xFFF) ||
+              uint32_t(clave & 0xFFFF) != pitch || imagen.imagen == VK_NULL_HANDLE) {
+            continue;
+          }
+          Preparar(imagen);
+          AntesDeEscribirColor(imagen);
+          RotarFrontalAntesDeBorrar(imagen);
+          imagen.contenido_invalido = false;
+          AntesDeTransferir();
+          dfn_.vkCmdClearColorImage(comandos_trabajo_, imagen.imagen, VK_IMAGE_LAYOUT_GENERAL, &valor, 1,
+                                    &kRangoColor);
+          OlvidarBorrado(imagen);
+          ++colores;
+        }
+      }
+    }
+    bool profundidad = false;
+    if (z_siempre) {
+      RegistrosCopia reg;
+      reg.rb_depth_info = r[kDepthInfo];
+      const uint32_t estencil = (r[kDepthControl] & 0x1) ? (r[kStencilRefMask] & 0xFF) : 0;
+      reg.rb_depth_clear = (Profundidad24(z) << 8) | estencil;
+      BorrarProfundidad(reg, pitch);
+      profundidad = true;
+    }
+    ++borrados_d3d_;
+    if (volcado_activo_ && REXCVAR_GET(xdroid360_volcado_dibujos)) {
+      volcado_indice_ += fmt::format("    borrado de D3D con vertices: pitch {} mascara {:04X} rt0 {:08X} rt1 {:08X}: {} "
+                                     "imagenes de color a ({:.3f}, {:.3f}, {:.3f}, {:.3f}){}\n",
+                                     pitch, r[kColorMask] & 0xFFFF, r[kColorInfo[0]], r[kColorInfo[1]], colores,
+                                     color[0], color[1], color[2], color[3], profundidad ? ", profundidad" : "");
+    }
+    const uint64_t tipo_borrado = (uint64_t(1) << 63) | (uint64_t(r[kColorInfo[0]] & 0xFFF) << 48) |
+                                  (uint64_t(pitch) << 34) | (uint64_t(colores) << 30) |
+                                  (uint64_t(profundidad) << 29) | (r[kColorMask] & 0xFFFF);
+    if (borrados_d3d_vistos_.size() < 64 && borrados_d3d_vistos_.insert(tipo_borrado).second) {
+      REXLOG_INFO("[nativo] C2 borrado de D3D con vertices: pitch {}, mascara de color {:04X}, {} destinos de color a "
+                  "({:.3f}, {:.3f}, {:.3f}, {:.3f}){}",
+                  pitch, r[kColorMask] & 0xFFFF, colores, color[0], color[1], color[2], color[3],
+                  profundidad ? fmt::format(", profundidad a {:.6f}", z) : std::string());
+    }
+    return colores != 0 || profundidad;
   }
 
   /*
@@ -3237,8 +3881,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
       if (!((mascara >> (4 * i)) & 0xF)) {
         continue;
       }
-      const auto it = destinos_.find((uint64_t(infos[i] & 0xFFF) << 20) | (uint64_t((infos[i] >> 16) & 0xF) << 16) |
-                                     pitch);
+      const auto it = destinos_.find(ClaveDestino(infos[i] & 0xFFF, (infos[i] >> 16) & 0xF, pitch));
       if (it == destinos_.end()) {
         volcado_indice_ += fmt::format("    tras el dibujo PS n{}: rt{} {:03X} sin imagen ({})\n",
                                        peticion.ps->numero, i, infos[i] & 0xFFF, hecho ? "dibujado" : "NO dibujado");
@@ -3303,6 +3946,8 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     if (!imagen || !Grabar()) {
       return nullptr;
     }
+    // xdroid360_alias_edram: the format last drawn at this EDRAM base and pitch.
+    ultimo_dibujado_[(uint64_t(base) << 20) | pitch] = ClaveDestino(base, formato, pitch);
     Preparar(*imagen);
     AntesDeEscribirColor(*imagen);  // nfsmw_nativo_frontal_perezoso
     // Mandatory since color is also swapped. Here a pass starts that draws on top; if the content went away
@@ -4265,6 +4910,16 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     return true;
   }
 
+  // The key of a color target in destinos_ (the "AS" formats are their base format: see ObtenerDestino).
+  static uint64_t ClaveDestino(uint32_t base, uint32_t formato, uint32_t pitch) {
+    if (formato == 12) {
+      formato = 3;
+    } else if (formato == 10) {
+      formato = 2;
+    }
+    return (uint64_t(base) << 20) | (uint64_t(formato) << 16) | pitch;
+  }
+
   Imagen* ObtenerDestino(uint32_t base, uint32_t formato, uint32_t pitch) {
     if (!pitch) {
       Rechazar(7, "destino de render con pitch 0");
@@ -4278,7 +4933,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     } else if (formato == 10) {
       formato = 2;
     }
-    const uint64_t clave = (uint64_t(base) << 20) | (uint64_t(formato) << 16) | pitch;
+    const uint64_t clave = ClaveDestino(base, formato, pitch);
     auto it = destinos_.find(clave);
     if (it != destinos_.end()) {
       return &it->second;
@@ -5168,6 +5823,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     if (dibujos_ && imagen.vista != VK_NULL_HANDLE) {
       dibujos_->OlvidarVista(imagen.vista);
     }
+    OlvidarVista7e3(imagen.vista);  // the same for the encode pass's framebuffer and descriptor set
     if (imagen.vista != VK_NULL_HANDLE) dfn_.vkDestroyImageView(device_, imagen.vista, nullptr);
     if (imagen.imagen != VK_NULL_HANDLE) dfn_.vkDestroyImage(device_, imagen.imagen, nullptr);
     if (imagen.memoria != VK_NULL_HANDLE) dfn_.vkFreeMemory(device_, imagen.memoria, nullptr);
@@ -5946,10 +6602,16 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
       linea += " intercambio_rb";
     }
     // 0 color; depth, as gray (GuardarVolcado): 1 D32S8, 2 D24S8.
-    const uint32_t clase = imagen.formato == kFormatoColor                ? 0
-                           : imagen.formato == VK_FORMAT_D32_SFLOAT_S8_UINT ? 1
-                           : imagen.formato == VK_FORMAT_D24_UNORM_S8_UINT  ? 2
-                                                                            : 3;
+    // XDroid360: 4-8 are State of Decay's HDR formats (GuardarVolcado clamps them to 0..1 and notes their range).
+    const uint32_t clase = imagen.formato == kFormatoColor                       ? 0
+                           : imagen.formato == VK_FORMAT_D32_SFLOAT_S8_UINT       ? 1
+                           : imagen.formato == VK_FORMAT_D24_UNORM_S8_UINT        ? 2
+                           : imagen.formato == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ? 4
+                           : imagen.formato == VK_FORMAT_R16G16B16A16_SFLOAT      ? 5
+                           : imagen.formato == VK_FORMAT_R16G16_SFLOAT            ? 6
+                           : imagen.formato == VK_FORMAT_R16G16B16A16_UNORM       ? 7
+                           : imagen.formato == VK_FORMAT_R32_SFLOAT               ? 8
+                                                                                  : 3;
     if (clase == 3 || imagen.imagen == VK_NULL_HANDLE || !imagen.preparada || !imagen.ancho || !imagen.alto) {
       volcado_indice_ += linea + " no volcada\n";
       return;
@@ -5960,7 +6622,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     Lectura lectura;
     uint32_t tipo = 0;
     void* mapeado = nullptr;
-    const VkDeviceSize bytes = VkDeviceSize(imagen.ancho) * imagen.alto * 4;
+    const VkDeviceSize bytes = VkDeviceSize(imagen.ancho) * imagen.alto * ((clase == 5 || clase == 7) ? 8 : 4);
     if (!Grabar() ||
         !rex::ui::vulkan::util::CreateDedicatedAllocationBuffer(
             dispositivo_, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, rex::ui::vulkan::util::MemoryPurpose::kReadback,
@@ -5983,7 +6645,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     dfn_.vkCmdPipelineBarrier(comandos_trabajo_, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                               0, 1, &barrera, 0, nullptr, 0, nullptr);
     VkBufferImageCopy copia{};
-    copia.imageSubresource = {clase == 0 ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+    copia.imageSubresource = {(clase == 0 || clase >= 4) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
     copia.imageExtent = {imagen.ancho, imagen.alto, 1};
     dfn_.vkCmdCopyImageToBuffer(comandos_trabajo_, imagen.imagen, VK_IMAGE_LAYOUT_GENERAL, lectura.bufer, 1, &copia);
     const std::string nombre = fmt::format("{:03}.png", paso);
@@ -6008,7 +6670,62 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
     }
     const uint8_t* rgba = lectura.datos;
     std::vector<uint8_t> gris;
-    if (clase != 0) {
+    if (clase >= 4) {
+      // XDroid360: 10-bit, half-float, 16-bit and float targets as 8 bits per channel, clamped to 0..1, with
+      // each channel's range in the index (an HDR target above 1 or all at 0 shows there).
+      const size_t n = size_t(ancho) * alto;
+      gris.resize(n * 4);
+      float minimo[4] = {1e30f, 1e30f, 1e30f, 1e30f}, maximo[4] = {-1e30f, -1e30f, -1e30f, -1e30f};
+      double suma[4] = {};
+      const auto medio = [](uint16_t h) {
+        const uint32_t exponente = (h >> 10) & 0x1F, mantisa = h & 0x3FF;
+        float v;
+        if (exponente == 0) {
+          v = std::ldexp(float(mantisa), -24);
+        } else if (exponente == 31) {
+          v = mantisa ? 0.0f : 65504.0f;  // NaN as 0, infinity as the largest half
+        } else {
+          v = std::ldexp(float(mantisa | 0x400), int(exponente) - 25);
+        }
+        return (h & 0x8000) ? -v : v;
+      };
+      for (size_t i = 0; i < n; ++i) {
+        float c[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        if (clase == 4) {
+          uint32_t v;
+          std::memcpy(&v, lectura.datos + i * 4, 4);
+          c[0] = float(v & 0x3FF) / 1023.0f;
+          c[1] = float((v >> 10) & 0x3FF) / 1023.0f;
+          c[2] = float((v >> 20) & 0x3FF) / 1023.0f;
+          c[3] = float(v >> 30) / 3.0f;
+        } else if (clase == 5 || clase == 7) {
+          uint16_t v[4];
+          std::memcpy(v, lectura.datos + i * 8, 8);
+          for (int k = 0; k < 4; ++k) {
+            c[k] = clase == 5 ? medio(v[k]) : float(v[k]) / 65535.0f;
+          }
+        } else if (clase == 6) {
+          uint16_t v[2];
+          std::memcpy(v, lectura.datos + i * 4, 4);
+          c[0] = medio(v[0]);
+          c[1] = medio(v[1]);
+        } else {
+          std::memcpy(&c[0], lectura.datos + i * 4, 4);
+        }
+        for (int k = 0; k < 4; ++k) {
+          minimo[k] = std::min(minimo[k], c[k]);
+          maximo[k] = std::max(maximo[k], c[k]);
+          suma[k] += c[k];
+          gris[i * 4 + k] = k == 3 ? 255 : uint8_t(std::clamp(c[k], 0.0f, 1.0f) * 255.0f + 0.5f);
+        }
+      }
+      volcado_indice_ += fmt::format("    {}: R {:.4f}..{:.4f} (media {:.4f}), G {:.4f}..{:.4f} ({:.4f}), B {:.4f}..{:.4f} "
+                                     "({:.4f}), A {:.4f}..{:.4f} ({:.4f})\n",
+                                     nombre, minimo[0], maximo[0], suma[0] / double(n), minimo[1], maximo[1],
+                                     suma[1] / double(n), minimo[2], maximo[2], suma[2] / double(n), minimo[3],
+                                     maximo[3], suma[3] / double(n));
+      rgba = gris.data();
+    } else if (clase != 0) {
       const size_t n = size_t(ancho) * alto;
       std::vector<float> z(n);
       for (size_t i = 0; i < n; ++i) {
@@ -6041,6 +6758,28 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
       volcado_indice_ += fmt::format("    {}: profundidad {:.6f}..{:.6f}, {} de {} texels a 1.0\n", nombre, minimo,
                                      maximo, borrados, n);
       rgba = gris.data();
+    }
+    if (clase == 0) {
+      // XDroid360: the alpha of an 8-bit color image as a picture of its own (NNN_alfa.png) and its range in
+      // the index: State of Decay keeps its shadow mask there, and the PNG above only shows the color.
+      const size_t n = size_t(ancho) * alto;
+      std::vector<uint8_t> alfa(n * 4);
+      uint32_t minimo = 255, maximo = 0;
+      uint64_t suma = 0;
+      for (size_t i = 0; i < n; ++i) {
+        const uint8_t a = lectura.datos[i * 4 + 3];
+        minimo = std::min<uint32_t>(minimo, a);
+        maximo = std::max<uint32_t>(maximo, a);
+        suma += a;
+        alfa[i * 4] = alfa[i * 4 + 1] = alfa[i * 4 + 2] = a;
+        alfa[i * 4 + 3] = 255;
+      }
+      volcado_indice_ += fmt::format("    {}: alfa {}..{} (media {:.1f})\n", nombre, minimo, maximo,
+                                     n ? double(suma) / double(n) : 0.0);
+      if (minimo != maximo) {
+        const std::string nombre_alfa = nombre.substr(0, nombre.rfind('.')) + "_alfa.png";
+        nfsmw::captura::GuardarPng(volcado_carpeta_ / nombre_alfa, alfa.data(), ancho, alto);
+      }
     }
     if (!nfsmw::captura::GuardarPng(volcado_carpeta_ / nombre, rgba, ancho, alto)) {
       volcado_indice_ += "!!! no se pudo escribir " + nombre + "\n";
@@ -6503,6 +7242,8 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
   std::unique_ptr<DibujosVulkan> dibujos_;
 
   std::unordered_map<uint64_t, Imagen> destinos_;
+  // xdroid360_alias_edram: by EDRAM base and pitch, the key in destinos_ of the image last bound for drawing.
+  std::unordered_map<uint64_t, uint64_t> ultimo_dibujado_;
   std::unordered_map<uint32_t, Resuelta> resueltas_;
   // XDroid360: UnirTesela.
   std::unordered_set<uint32_t> avisos_teselas_;
@@ -6593,6 +7334,20 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
   VkShaderModule fs_ = VK_NULL_HANDLE;
   VkRenderPass render_pass_salida_ = VK_NULL_HANDLE;
   VkPipeline pipeline_ = VK_NULL_HANDLE;
+  // xdroid360_alias_edram: the 7e3 encode pass (Codificar7e3). Everything is created on its first use.
+  static constexpr uint32_t kDescriptores7e3 = 32;
+  VkRenderPass render_pass_7e3_ = VK_NULL_HANDLE;
+  VkSampler sampler_7e3_ = VK_NULL_HANDLE;
+  VkDescriptorSetLayout layout_descriptores_7e3_ = VK_NULL_HANDLE;
+  VkPipelineLayout layout_pipeline_7e3_ = VK_NULL_HANDLE;
+  VkDescriptorPool pool_descriptores_7e3_ = VK_NULL_HANDLE;
+  VkPipeline pipeline_7e3_ = VK_NULL_HANDLE;
+  std::unordered_map<VkImageView, VkFramebuffer> framebuffers_7e3_;   // by the texture's view
+  std::unordered_map<VkImageView, VkDescriptorSet> descriptores_7e3_;  // by the source's view
+  std::vector<VkDescriptorSet> descriptores_7e3_libres_;               // of destroyed views, to reuse
+  bool codificar_7e3_fallido_ = false;
+  bool codificar_7e3_sin_sitio_avisado_ = false;
+  bool codificar_7e3_anotado_ = false;
   // Output with the game's gamma ramp (nfsmw_nativo_rampa_gamma).
   struct RampaSalida {
     VkBuffer bufer = VK_NULL_HANDLE;

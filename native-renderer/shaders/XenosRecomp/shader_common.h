@@ -90,7 +90,12 @@ struct PushConstants
 // -fvk-use-dx-layout each float4 takes 16 contiguous bytes, so any 4-byte word of the shared block is
 // a component: v[B / 16][(B % 16) / 4], and asuint reads it without changing a bit.
 struct NfsmwBloqueVs { float4 v[256]; };
-struct NfsmwBloquePs { float4 v[224]; };
+// XDroid360: 224, or 256 for a pixel shader that reads c224 and up (XenosRecomp defines
+// NFSMW_PS_CONSTANTS for it; State of Decay has such shaders).
+#ifndef NFSMW_PS_CONSTANTS
+#define NFSMW_PS_CONSTANTS 224
+#endif
+struct NfsmwBloquePs { float4 v[NFSMW_PS_CONSTANTS]; };
 struct NfsmwBloqueCompartidas { float4 v[23]; };
 [[vk::binding(0, 4)]] ConstantBuffer<NfsmwBloqueVs> g_UboVertex;
 [[vk::binding(1, 4)]] ConstantBuffer<NfsmwBloquePs> g_UboPixel;
