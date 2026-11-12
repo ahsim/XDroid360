@@ -106,10 +106,10 @@ final class Instance {
         return DAO_TITLE_ID.equals(id) || SOD_TITLE_ID.equals(id);
     }
 
-    /** The renderer to start with: the chosen one, else native for Dragon Age: Origins, else Xenia. */
+    /** The renderer to start with: the chosen one, else native for a game that has it, else Xenia. */
     String rendererToUse() {
         if (RENDERER_NATIVE.equals(renderer) || RENDERER_XENIA.equals(renderer)) return renderer;
-        return DAO_TITLE_ID.equals(titleId()) ? RENDERER_NATIVE : RENDERER_XENIA;
+        return hasNativeRenderer() ? RENDERER_NATIVE : RENDERER_XENIA;
     }
 
     private Instance(String id, File root, File library) {
