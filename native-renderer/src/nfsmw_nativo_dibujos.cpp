@@ -668,6 +668,9 @@ REXCVAR_DEFINE_STRING(xdroid360_diag_omitir_vs, "", "NFSMW",
 REXCVAR_DEFINE_STRING(xdroid360_diag_opaco_ps, "", "NFSMW",
                       "XDroid360 (tests only): pixel shader numbers (comma-separated) drawn without blending "
                       "(source ONE, destination ZERO), to see what the shader itself outputs");
+REXCVAR_DEFINE_BOOL(xdroid360_texturas_expand, false, "NFSMW",
+                    "XDroid360: textures in k_16_EXPAND, k_16_16_EXPAND and k_16_16_16_16_EXPAND are sampled as half "
+                    "floats, as Xenia loads them (State of Decay). false = an empty texture, as before");
 REXCVAR_DEFINE_BOOL(xdroid360_fetch_tipo_invalido, false, "NFSMW",
                     "XDroid360: texture fetch constants whose type field is 0 (\"invalid texture\") are "
                     "sampled like textures, as Xenia does with gpu_allow_invalid_fetch_constants. State of "
@@ -777,6 +780,12 @@ REXCVAR_DEFINE_INT32(nfsmw_nativo_sombras_sesgo_constante, 0, "NFSMW",
                      "sombras, en miles de unidades de 24 bits (1 = 1000). 0 = sin constante. Se cambia en marcha")
     .range(0, 100);
 
+REXCVAR_DEFINE_INT32(xdroid360_sesgo_lod, 0, "NFSMW",
+                     "XDroid360: added to the level of detail of textures with mips (1 = one mip smaller, half "
+                     "resolution), like the emulated renderer's dao_texture_lod_bias, which the launcher's "
+                     "texture detail setting writes and the hosts pass on. Less texture bandwidth on a weak GPU. "
+                     "0 = the game's own")
+    .range(0, 4);
 REXCVAR_DEFINE_INT32(nfsmw_nativo_diag_mip_minimo, 0, "NFSMW",
                      "Diagnostico (25/09, build 180): las texturas con mips empiezan N niveles mas abajo, tambien de "
                      "cerca, para ver si sus niveles de mip estan bien. 0 = normal; 1, 2 o 3 para mirar. Se cambia en "
@@ -5100,6 +5109,15 @@ class DibujosVulkanImpl final : public DibujosVulkan {
                     nuevo ? " (DIAGNOSTICO: todo se vera borroso)" : " (normal)");
       }
     }
+    // xdroid360_sesgo_lod. In the sampler key, like the mip diagnostic above.
+    {
+      const uint32_t nuevo = uint32_t(std::clamp(int32_t(REXCVAR_GET(xdroid360_sesgo_lod)), 0, 4));
+      if (nuevo != sesgo_lod_) {
+        sesgo_lod_ = nuevo;
+        ++generacion_texturas_;
+        REXLOG_INFO("[nativo] C4 detalle de texturas: nivel de detalle {} (0 = el del juego)", nuevo);
+      }
+    }
     // The shadow map's own depth bias, once per frame.
     {
       const int32_t constante = std::clamp(int32_t(REXCVAR_GET(nfsmw_nativo_sombras_sesgo_constante)), 0, 100);
@@ -8822,7 +8840,8 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     }
     const uint32_t formato = f[1] & 0x3F;
     FormatoTextura tf;
-    if (!FormatoTexturaDe(formato, tf)) {
+    if (!FormatoTexturaDe(formato, tf) ||
+        (formato >= 27 && formato <= 29 && !REXCVAR_GET(xdroid360_texturas_expand))) {
       AnotarSignosTextura(signos, formato, dimension, kSignosSinFormato);
       Avisar(400 + formato, "formato de textura todavia no soportado: se usa una vacia");
       // XDroid360: which texture it is, a few times (a resolve target sampled at another address shows here).
@@ -10268,9 +10287,13 @@ class DibujosVulkanImpl final : public DibujosVulkan {
         campo_mips = (campo_mips & 0xF0) | std::min(maximo, minimo + diag_mip_minimo_);
       }
     }
-    const uint32_t clave = ((f[0] >> 10) & 0x1FF) | (campo_filtros << 9) |
-                           (campo_mips << 21) | ((f[5] & 0x3) << 29) |
-                           (puntual ? 0x80000000u : 0u);
+    // xdroid360_sesgo_lod only for samplers with real mips (a single level has nothing smaller to take).
+    const uint32_t sesgo_lod =
+        ((campo_mips >> 4) & 0xF) > (campo_mips & 0xF) && ((campo_filtros >> 4) & 0x3) != 2 ? sesgo_lod_ : 0;
+    const uint64_t clave = uint64_t(((f[0] >> 10) & 0x1FF) | (campo_filtros << 9) |
+                                    (campo_mips << 21) | ((f[5] & 0x3) << 29) |
+                                    (puntual ? 0x80000000u : 0u)) |
+                           (uint64_t(sesgo_lod) << 32);
     if (const auto it = samplers_.find(clave); it != samplers_.end()) {
       return it->second.second;
     }
@@ -10302,6 +10325,10 @@ class DibujosVulkanImpl final : public DibujosVulkan {
     // With real mips, the fetch constant's maximum level also limits (like the emulation's sampler);
     // single-level textures stay as before.
     info.maxLod = mip == 2 ? info.minLod + 0.25f : std::max(info.minLod, float((f[4] >> 6) & 0xF));
+    if (sesgo_lod) {
+      // Vulkan guarantees a maxSamplerLodBias of at least 2, the launcher's strongest setting.
+      info.mipLodBias = std::min(float(sesgo_lod), 2.0f);
+    }
     info.borderColor = (f[5] & 0x3) == 1 ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE
                                          : VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
     // nfsmw_nativo_anisotropico. Only linear samplers with mips (maxLod above minLod); the value is read at
@@ -12908,11 +12935,12 @@ class DibujosVulkanImpl final : public DibujosVulkan {
   // vistas_: 2.7 % of the ring thread in a race. Maintained together with vistas_ in RanuraVista
   // (insertion) and in QuitarVista (every removal).
   std::unordered_map<VkImage, std::vector<uint64_t>> vistas_por_imagen_;
-  std::unordered_map<uint32_t, std::pair<VkSampler, uint32_t>> samplers_;
+  std::unordered_map<uint64_t, std::pair<VkSampler, uint32_t>> samplers_;
   // Diagnostic: filter values already logged (RanuraSampler).
   uint32_t aniso_vistos_ = 0;
   bool aniso_anotado_ = false;  // nfsmw_nativo_anisotropico, one line when the first one is created
   uint32_t diag_mip_minimo_ = 0;  // nfsmw_nativo_diag_mip_minimo, read once per frame
+  uint32_t sesgo_lod_ = 0;        // xdroid360_sesgo_lod, read once per frame
   // nfsmw_nativo_sombras_sesgo_*, read once per frame.
   int32_t sombras_sesgo_constante_ = 0;
   int32_t sombras_sesgo_pendiente_ = 0;

@@ -113,7 +113,11 @@ namespace dao::gpu::native
                 const size_t equals = text.find('=');
                 if (!inside || equals == std::string_view::npos)
                     continue;
-                const std::string name(trim(text.substr(0, equals)));
+                std::string name(trim(text.substr(0, equals)));
+                // The launcher's texture detail setting is the emulated renderer's
+                // dao_texture_lod_bias; the native renderer takes it as xdroid360_sesgo_lod.
+                if (name == "dao_texture_lod_bias")
+                    name = "xdroid360_sesgo_lod";
                 std::string_view value = trim(text.substr(equals + 1));
                 if (!value.empty() && value[0] == '"')
                 {

@@ -115,7 +115,7 @@ REXCVAR_DEFINE_BOOL(xdroid360_profundidad_inicial_cero, true, "NFSMW",
                     "instead of 1.0. Dragon Age resolves its shadow map once at boot with nothing drawn: at 1.0 "
                     "the meshes lit by shadowed lights came out fully lit next to unlit ones (bright blocks on "
                     "walls); at 0 they are in shadow, as on Xenia. false = 1.0, as before");
-REXCVAR_DEFINE_BOOL(xdroid360_copias_hdr, true, "NFSMW",
+REXCVAR_DEFINE_BOOL(xdroid360_copias_hdr, false, "NFSMW",
                     "XDroid360: resolves to 2_10_10_10, 10_11_11, 16_16_16_16 and the half-float formats (State "
                     "of Decay's HDR scene), into textures of those formats, converting with a blit. Exponent "
                     "biases not applied yet. false = rejected as before (only 8_8_8_8)");
@@ -125,7 +125,7 @@ REXCVAR_DEFINE_BOOL(xdroid360_borrado_d3d, true, "NFSMW",
                     "clears to RB_DEPTH_CLEAR of every depth target at that EDRAM base, whatever its pitch: "
                     "D3D clears the 1280x720 depth as 640 wide with 4x MSAA, the same EDRAM. false = dropped "
                     "as before");
-REXCVAR_DEFINE_INT32(xdroid360_borrado_d3d_vertices, 1, "NFSMW",
+REXCVAR_DEFINE_INT32(xdroid360_borrado_d3d_vertices, 0, "NFSMW",
                      "XDroid360: D3D's Clear rectangles that carry the clear values in their three vertices "
                      "(x, y, z and a float color each, 21 words in vertex fetch 0; State of Decay's D3D leaves "
                      "RB_DEPTH_CLEAR at 0). 0 = off: only RB_DEPTH_CLEAR, as before. 1 = the depth comes from "
