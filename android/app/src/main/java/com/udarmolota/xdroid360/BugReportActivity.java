@@ -227,7 +227,8 @@ public class BugReportActivity extends AppCompatActivity {
             put(zip, "device.txt", deviceInfo().getBytes(StandardCharsets.UTF_8));
             if (i != null) {
                 put(zip, "instance.txt", (i.name + "\n" + i.buildLabel() + "\ndriver " + i.driver + ", sysmem " + i.sysmem
-                        + ", texture LOD " + i.textureLodBias + ", display " + i.hudMode + "\n\n"
+                        + ", texture LOD " + i.textureLodToUse() + (i.textureLodBias < 0 ? " (default)" : "")
+                        + ", display " + i.hudMode + "\n\n"
                         + i.manifest.toString()).getBytes(StandardCharsets.UTF_8));
                 // The game's own log and settings, whatever it names them (dao.log, sod.log,
                 // config.toml, the game's own .toml), and the launcher's env.txt.

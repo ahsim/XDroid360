@@ -360,7 +360,7 @@ public class GameActivity extends SDLActivity {
         }
         File config = new File(current.userdata(), "config.toml");
         try {
-            XeniaConfig.set(config, "dao_texture_lod_bias", String.valueOf(current.textureLodBias));
+            XeniaConfig.set(config, "dao_texture_lod_bias", String.valueOf(current.textureLodToUse()));
             // The game's text language, read at its start (both games' runtimes: [game] language).
             XeniaConfig.set(config, "game", "language", "\"" + current.languageToUse() + "\"");
             // Always: it saves GPU work, and the plain scaling it uses looks the same on a phone.
@@ -384,7 +384,7 @@ public class GameActivity extends SDLActivity {
             Log.w(TAG, "preset: " + e);
         }
         Log.i(TAG, "Instance " + current.id + ": driver " + current.driver + ", sysmem " + current.sysmem
-                + ", texture LOD " + current.textureLodBias + ", display " + current.hudMode
+                + ", texture LOD " + current.textureLodToUse() + ", display " + current.hudMode
                 + ", language " + current.languageToUse()
                 + (current.option("frame_rate") != null ? ", frame rate " + current.frameRateToUse() : "")
                 + (current.option("preset") != null ? ", preset " + (current.preset.isEmpty() ? "game's own" : current.preset) : ""));

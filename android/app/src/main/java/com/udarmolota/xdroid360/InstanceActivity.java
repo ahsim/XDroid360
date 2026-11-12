@@ -78,13 +78,7 @@ public class InstanceActivity extends AppCompatActivity {
         driverPick.setOnClickListener(v -> pickDriver.launch(new String[] { "*/*" }));
         bindSpinner(findViewById(R.id.sysmem), R.array.sysmem, indexOf(SYSMEM, instance.sysmem), i -> instance.sysmem = SYSMEM[i]);
         bindOptions();
-        android.widget.RadioGroup lod = findViewById(R.id.lod);
-        int[] lodIds = { R.id.lod_full, R.id.lod_low, R.id.lod_ultra_low };
-        lod.check(lodIds[Math.max(0, Math.min(2, instance.textureLodBias))]);
-        lod.setOnCheckedChangeListener((g, checked) -> {
-            for (int i = 0; i < lodIds.length; i++) if (lodIds[i] == checked) instance.textureLodBias = i;
-            save();
-        });
+        bindTextureLod();
         View advanced = findViewById(R.id.advanced);
         View chevron = findViewById(R.id.advanced_chevron);
         findViewById(R.id.advanced_header).setOnClickListener(v -> {
@@ -112,6 +106,21 @@ public class InstanceActivity extends AppCompatActivity {
 
     private com.google.android.material.textfield.TextInputEditText env;
 
+    /**
+     * Texture detail: the one picked, or while none is, the renderer's default (so it follows a
+     * change of renderer). Only a tap is a pick; the check set here isn't.
+     */
+    private void bindTextureLod() {
+        android.widget.RadioGroup lod = findViewById(R.id.lod);
+        int[] lodIds = { R.id.lod_full, R.id.lod_low, R.id.lod_ultra_low };
+        lod.setOnCheckedChangeListener(null);
+        lod.check(lodIds[instance.textureLodToUse()]);
+        lod.setOnCheckedChangeListener((g, checked) -> {
+            for (int i = 0; i < lodIds.length; i++) if (lodIds[i] == checked) instance.textureLodBias = i;
+            save();
+        });
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -129,10 +138,13 @@ public class InstanceActivity extends AppCompatActivity {
      * once, never at start: the game's own Graphics settings keep the same value, so neither side
      * overrides the other. Any other rate the game was set to leaves no button checked. A package
      * with its own frame rate option (options.frame_rate, applied at every start) keeps that one.
+     * State of Decay offers 30 and 60 only: unlimited, its menus run at hundreds of fps and flicker.
      */
     private void bindFrameRateCap() {
         if (instance.option("frame_rate") != null) return;
         findViewById(R.id.fps_cap_card).setVisibility(View.VISIBLE);
+        findViewById(R.id.fps_cap_off).setVisibility(
+                Instance.SOD_TITLE_ID.equals(instance.titleId()) ? View.GONE : View.VISIBLE);
         android.widget.RadioGroup group = findViewById(R.id.fps_cap);
         int[] ids = { R.id.fps_cap_30, R.id.fps_cap_60, R.id.fps_cap_off };
         int[] rates = { 30, 60, 0 };
@@ -228,6 +240,7 @@ public class InstanceActivity extends AppCompatActivity {
             renderer.setOnCheckedChangeListener((g, checked) -> {
                 instance.renderer = checked == R.id.renderer_native ? Instance.RENDERER_NATIVE : Instance.RENDERER_XENIA;
                 save();
+                bindTextureLod(); // its default depends on the renderer
             });
         }
         org.json.JSONObject frameRate = instance.option("frame_rate");

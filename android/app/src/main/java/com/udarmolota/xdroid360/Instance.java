@@ -37,9 +37,18 @@ final class Instance {
     JSONObject manifest; // the package's manifest.json (empty for the development build)
     String driver = DRIVER_AUTO;
     String sysmem = SYSMEM_AUTO;
-    // New instances start at the lowest texture detail: a phone's memory and bandwidth, not the
-    // console's (the choice stays in the settings).
-    int textureLodBias = 2;
+    /** Texture detail (dao_texture_lod_bias: 0 full, 1 low, 2 ultra low) picked, -1 for the default. */
+    int textureLodBias = -1;
+
+    /**
+     * The texture detail to start with: the one picked, else the renderer's default. Xenia starts
+     * at ultra low (a phone's memory and bandwidth, not the console's); the native renderer, which
+     * spends far less of both, at low.
+     */
+    int textureLodToUse() {
+        if (textureLodBias >= 0 && textureLodBias <= 2) return textureLodBias;
+        return hasNativeRenderer() && RENDERER_NATIVE.equals(rendererToUse()) ? 1 : 2;
+    }
     /** The in-game display: nothing, the FPS counter, or the performance bar (as in Zomdroid). */
     static final int HUD_OFF = 0, HUD_FPS = 1, HUD_FULL = 2;
     int hudMode = HUD_OFF;
@@ -152,13 +161,16 @@ final class Instance {
      * The frame rate cap the game will run at ([video] frame_rate, 0 = no limit): the game's own
      * setting (Dragon Age's in-game Graphics tab writes the same key), else its default: 30 for
      * State of Decay, and for Dragon Age 60, or 30 on a GPU short of an Adreno 8xx (what its first
-     * start writes, GameActivity.applyWeakGpuDefaults).
+     * start writes, GameActivity.applyWeakGpuDefaults). State of Decay runs at 30 or 60 only: its
+     * runtime clamps no limit (0) and anything above 60 to 60, so that is what is reported.
      */
     int frameRateCap() {
         String v = XeniaConfig.get(config(), "video", "frame_rate");
         if (v != null) {
             try {
-                return Integer.parseInt(v);
+                int fps = Integer.parseInt(v);
+                if (SOD_TITLE_ID.equals(titleId()) && (fps <= 0 || fps > 60)) return 60;
+                return fps;
             } catch (NumberFormatException ignored) {
             }
         }
@@ -213,7 +225,8 @@ final class Instance {
             JSONObject s = new JSONObject();
             s.put("driver", driver);
             s.put("sysmem", sysmem);
-            s.put("texture_lod_bias", textureLodBias);
+            s.put("texture_lod", textureLodBias);                 // -1: the renderer's default
+            s.put("texture_lod_bias", textureLodToUse());         // what an older launcher reads
             s.put("hud_mode", hudMode);
             s.put("language", language);
             s.put("diagnostics", diagnostics);
@@ -249,7 +262,14 @@ final class Instance {
             if (s != null) {
                 driver = s.optString("driver", driver);
                 sysmem = s.optString("sysmem", sysmem);
-                textureLodBias = s.optInt("texture_lod_bias", textureLodBias);
+                if (s.has("texture_lod")) {
+                    textureLodBias = s.optInt("texture_lod", textureLodBias);
+                } else {
+                    // Before the per-renderer default: 2 was the default every instance saved,
+                    // so it can't be told from a choice and counts as the default.
+                    int old = s.optInt("texture_lod_bias", 2);
+                    textureLodBias = old == 2 ? -1 : old;
+                }
                 // Before hud_mode: the performance bar was a switch, on unless turned off.
                 language = s.optString("language", language);
                 diagnostics = s.optBoolean("diagnostics", diagnostics);
