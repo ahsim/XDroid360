@@ -1,5 +1,6 @@
-// The container readers of libshaderlib.so (defined in xdroid360_shaderlib.cpp), for the shader
-// library: Dragon Age's shaders.erf and State of Decay's shaders.pak.
+// The readers both modes of libshaderlib.so share (defined in xdroid360_shaderlib.cpp): the
+// shader library (Dragon Age's shaders.erf, State of Decay's shaders.pak) and State of Decay's
+// Russian text (sod_russian.cpp).
 #pragma once
 
 #include <cstddef>

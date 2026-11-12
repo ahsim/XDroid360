@@ -438,7 +438,11 @@ void WriteFile(const std::string& path, const void* data, size_t n) {
 
 }  // namespace
 
+// State of Decay's Russian text, the --sod-russian mode (sod_russian.cpp).
+int SodRussianMain(int argc, char** argv);
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::strcmp(argv[1], "--sod-russian") == 0) return SodRussianMain(argc - 1, argv + 1);
   const auto start = std::chrono::steady_clock::now();
   try {
     std::string erf_path, out_path, hlsl_dir;

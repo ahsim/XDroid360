@@ -23,6 +23,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${XR}/shader_comm
 
 add_executable(xdroid360_shaderlib
   xdroid360_shaderlib.cpp
+  sod_russian.cpp
   ${XR}/shader_recompiler.cpp
   ${NR_DIR}/src/nfsmw_shader_library.cpp
   ${FMT_DIR}/src/format.cc
